@@ -1,4 +1,5 @@
 import {
+  boardCardSchema,
   boardSchema,
   boardSnapshotSchema,
   createBoardBodySchema,
@@ -6,6 +7,7 @@ import {
   createColumnBodySchema,
   entityIdSchema,
   listBoardsResponseSchema,
+  updateCardBodySchema,
 } from '@syncboard/shared'
 
 import { requestJson } from '@/shared/api/http-client'
@@ -54,4 +56,18 @@ export async function createCard(
   })
 
   return payload
+}
+
+export async function updateCard(
+  cardId: string,
+  input: { title?: string; description?: string; columnId?: string; position?: number },
+) {
+  const id = entityIdSchema.parse(cardId)
+  const body = updateCardBodySchema.parse(input)
+  const payload = await requestJson(`/cards/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+
+  return boardCardSchema.parse(payload)
 }

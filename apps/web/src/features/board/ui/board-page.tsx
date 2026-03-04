@@ -1,15 +1,28 @@
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
 import { createCardBodySchema, createColumnBodySchema, entityIdSchema } from '@syncboard/shared'
 import { useForm, useWatch } from 'react-hook-form'
 import { Link, useParams } from 'react-router-dom'
 import { z } from 'zod'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import type { BoardCard, BoardSnapshot } from '@syncboard/shared'
 
 import { boardQueryKeys } from '@/entities/board/api/query-keys'
+import { moveCardOptimistic } from '@/features/board/dnd/card-dnd'
 import { useBoardUiStore } from '@/features/board/model/board-ui-store'
 import { useBoardRealtimeSync } from '@/features/board/realtime/use-board-realtime-sync'
-import { createCard, createColumn, getBoardSnapshot } from '@/features/boards/api/boards-api'
+import { createCard, createColumn, getBoardSnapshot, updateCard } from '@/features/boards/api/boards-api'
 
 type CreateColumnForm = {
   title: string
@@ -21,12 +34,74 @@ const createCardFormSchema = createCardBodySchema.extend({
 
 type CreateCardForm = z.infer<typeof createCardFormSchema>
 
+type DraggableCardProps = {
+  card: BoardCard
+}
+
+type ColumnDropzoneProps = {
+  columnId: string
+  cards: BoardCard[]
+}
+
+function DraggableCard({ card }: DraggableCardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `card:${card.id}`,
+    data: {
+      type: 'card',
+      cardId: card.id,
+      columnId: card.columnId,
+    },
+  })
+
+  return (
+    <li
+      ref={setNodeRef}
+      className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.55 : 1,
+      }}
+      {...attributes}
+      {...listeners}
+    >
+      <p className="font-medium">{card.title}</p>
+      {card.description ? <p className="mt-1 text-xs text-slate-300">{card.description}</p> : null}
+    </li>
+  )
+}
+
+function ColumnDropzone({ columnId, cards }: ColumnDropzoneProps) {
+  const { setNodeRef } = useDroppable({
+    id: `column:${columnId}`,
+    data: {
+      type: 'column',
+      columnId,
+    },
+  })
+
+  return (
+    <ul ref={setNodeRef} className="space-y-2">
+      <SortableContext items={cards.map((card) => `card:${card.id}`)} strategy={verticalListSortingStrategy}>
+        {cards.map((card) => (
+          <DraggableCard key={card.id} card={card} />
+        ))}
+      </SortableContext>
+    </ul>
+  )
+}
+
 export function BoardPage() {
   const params = useParams()
   const boardId = params.boardId
   const queryClient = useQueryClient()
   const { selectedColumnId, setSelectedColumnId } = useBoardUiStore()
   const realtimeStatus = useBoardRealtimeSync(boardId)
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 4 },
+    }),
+  )
 
   const boardQuery = useQuery({
     queryKey: boardId ? boardQueryKeys.detail(boardId) : ['boards', 'invalid-id'],
@@ -86,6 +161,65 @@ export function BoardPage() {
       }
     },
   })
+
+  const moveCardMutation = useMutation({
+    mutationFn: (input: { cardId: string; columnId: string; position: number }) =>
+      updateCard(input.cardId, { columnId: input.columnId, position: input.position }),
+    onError: (_error, variables) => {
+      if (boardId) {
+        void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
+      }
+      console.error(`Failed to move card ${variables.cardId}`)
+    },
+  })
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    if (!boardId || !boardQuery.data || !event.over) {
+      return
+    }
+
+    const activeData = event.active.data.current
+    const overData = event.over.data.current
+
+    if (!activeData || activeData.type !== 'card') {
+      return
+    }
+
+    const activeCardId = String(activeData.cardId)
+
+    let destinationColumnId: string | undefined
+    let overCardId: string | undefined
+
+    if (overData?.type === 'column') {
+      destinationColumnId = String(overData.columnId)
+    }
+
+    if (overData?.type === 'card') {
+      destinationColumnId = String(overData.columnId)
+      overCardId = String(overData.cardId)
+    }
+
+    if (!destinationColumnId) {
+      return
+    }
+
+    const optimistic = moveCardOptimistic(boardQuery.data, {
+      cardId: activeCardId,
+      toColumnId: destinationColumnId,
+      overCardId,
+    })
+
+    if (!optimistic) {
+      return
+    }
+
+    queryClient.setQueryData<BoardSnapshot>(boardQueryKeys.detail(boardId), optimistic.snapshot)
+    moveCardMutation.mutate({
+      cardId: optimistic.movedCard.id,
+      columnId: optimistic.movedCard.columnId,
+      position: optimistic.movedCard.position,
+    })
+  }
 
   if (!boardId) {
     return (
@@ -178,23 +312,16 @@ export function BoardPage() {
         {boardQuery.isLoading ? <p>Loading board snapshot...</p> : null}
         {boardQuery.isError ? <p className="text-rose-400">Failed to load board snapshot.</p> : null}
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {boardQuery.data?.columns.map((column) => (
-            <article key={column.id} className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
-              <h2 className="mb-3 text-lg font-semibold">{column.title}</h2>
-              <ul className="space-y-2">
-                {column.cards.map((card) => (
-                  <li key={card.id} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2">
-                    <p className="font-medium">{card.title}</p>
-                    {card.description ? (
-                      <p className="mt-1 text-xs text-slate-300">{card.description}</p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </article>
-          ))}
-        </section>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {boardQuery.data?.columns.map((column) => (
+              <article key={column.id} className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
+                <h2 className="mb-3 text-lg font-semibold">{column.title}</h2>
+                <ColumnDropzone columnId={column.id} cards={column.cards} />
+              </article>
+            ))}
+          </section>
+        </DndContext>
       </div>
     </main>
   )
