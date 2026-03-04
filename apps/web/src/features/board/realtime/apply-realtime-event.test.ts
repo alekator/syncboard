@@ -56,6 +56,26 @@ function envelope(event: RealtimeEventEnvelope['event']): RealtimeEventEnvelope 
 }
 
 describe('applyRealtimeEventToSnapshot', () => {
+  it('updates and reorders column on column.updated event', () => {
+    const next = applyRealtimeEventToSnapshot(
+      baseSnapshot(),
+      envelope({
+        type: 'column.updated',
+        payload: {
+          id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          boardId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          title: 'In progress',
+          position: 500,
+          createdAt: '2026-03-05T00:00:00.000Z',
+          updatedAt: '2026-03-05T00:02:00.000Z',
+        },
+      }),
+    )
+
+    expect(next.columns[0].id).toBe('dddddddd-dddd-4ddd-8ddd-dddddddddddd')
+    expect(next.columns[0].title).toBe('In progress')
+  })
+
   it('adds card on card.created event', () => {
     const next = applyRealtimeEventToSnapshot(
       baseSnapshot(),

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
@@ -21,9 +21,20 @@ import type { BoardCard, BoardSnapshot } from '@syncboard/shared'
 import { boardQueryKeys } from '@/entities/board/api/query-keys'
 import { useSessionStore } from '@/features/auth/model/session-store'
 import { moveCardOptimistic } from '@/features/board/dnd/card-dnd'
+import { reorderColumnOptimistic } from '@/features/board/dnd/column-order'
 import { useBoardUiStore } from '@/features/board/model/board-ui-store'
 import { useBoardRealtimeSync } from '@/features/board/realtime/use-board-realtime-sync'
-import { createCard, createColumn, getBoardSnapshot, updateCard } from '@/features/boards/api/boards-api'
+import {
+  createCard,
+  createColumn,
+  getBoardSnapshot,
+  updateCard,
+  updateColumn,
+} from '@/features/boards/api/boards-api'
+
+function sortByPosition<T extends { position: number }>(items: T[]) {
+  return [...items].sort((a, b) => a.position - b.position)
+}
 
 type CreateColumnForm = {
   title: string
@@ -105,6 +116,8 @@ export function BoardPage() {
   const canEdit = user ? user.role !== 'viewer' : false
   const { selectedColumnId, setSelectedColumnId } = useBoardUiStore()
   const { status: realtimeStatus, onlineUserIds, currentUserId } = useBoardRealtimeSync(boardId)
+  const [editingColumnId, setEditingColumnId] = useState<string | null>(null)
+  const [editingColumnTitle, setEditingColumnTitle] = useState('')
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 4 },
@@ -180,6 +193,85 @@ export function BoardPage() {
       console.error(`Failed to move card ${variables.cardId}`)
     },
   })
+
+  const updateColumnMutation = useMutation({
+    mutationFn: (input: { columnId: string; title?: string; position?: number }) =>
+      updateColumn(input.columnId, { title: input.title, position: input.position }),
+    onSuccess: (updatedColumn) => {
+      if (!boardId) {
+        return
+      }
+
+      queryClient.setQueryData<BoardSnapshot | undefined>(boardQueryKeys.detail(boardId), (current) => {
+        if (!current) {
+          return current
+        }
+
+        return {
+          ...current,
+          columns: sortByPosition(
+            current.columns.map((column) =>
+              column.id === updatedColumn.id ? { ...column, ...updatedColumn } : column,
+            ),
+          ),
+        }
+      })
+    },
+    onError: () => {
+      if (boardId) {
+        void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
+      }
+    },
+  })
+
+  const startRenameColumn = (columnId: string, currentTitle: string) => {
+    setEditingColumnId(columnId)
+    setEditingColumnTitle(currentTitle)
+  }
+
+  const cancelRenameColumn = () => {
+    setEditingColumnId(null)
+    setEditingColumnTitle('')
+  }
+
+  const submitRenameColumn = (columnId: string) => {
+    const nextTitle = editingColumnTitle.trim()
+    if (!nextTitle) {
+      return
+    }
+
+    updateColumnMutation.mutate(
+      { columnId, title: nextTitle },
+      {
+        onSuccess: () => {
+          cancelRenameColumn()
+        },
+      },
+    )
+  }
+
+  const moveColumn = (columnId: string, direction: 'left' | 'right') => {
+    if (!boardId || !boardQuery.data) {
+      return
+    }
+
+    const currentIndex = boardQuery.data.columns.findIndex((column) => column.id === columnId)
+    if (currentIndex < 0) {
+      return
+    }
+
+    const toIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1
+    const optimistic = reorderColumnOptimistic(boardQuery.data, { columnId, toIndex })
+    if (!optimistic) {
+      return
+    }
+
+    queryClient.setQueryData<BoardSnapshot>(boardQueryKeys.detail(boardId), optimistic.snapshot)
+    updateColumnMutation.mutate({
+      columnId,
+      position: optimistic.movedColumn.position,
+    })
+  }
 
   const handleDragEnd = (event: DragEndEvent) => {
     if (!canEdit || !boardId || !boardQuery.data || !event.over) {
@@ -372,9 +464,71 @@ export function BoardPage() {
           onDragEnd={handleDragEnd}
         >
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {boardQuery.data?.columns.map((column) => (
+            {boardQuery.data?.columns.map((column, index, columns) => (
               <article key={column.id} className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
-                <h2 className="mb-3 text-lg font-semibold">{column.title}</h2>
+                <div className="mb-3 flex items-start justify-between gap-2">
+                  {editingColumnId === column.id ? (
+                    <div className="flex w-full items-center gap-2">
+                      <input
+                        value={editingColumnTitle}
+                        onChange={(event) => setEditingColumnTitle(event.target.value)}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-500"
+                        aria-label={`Column title ${column.title}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => submitRenameColumn(column.id)}
+                        className="rounded-md border border-cyan-600 px-2 py-1 text-xs hover:border-cyan-500"
+                        disabled={!canEdit || updateColumnMutation.isPending}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelRenameColumn}
+                        className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-slate-500"
+                        disabled={updateColumnMutation.isPending}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <h2 className="text-lg font-semibold">{column.title}</h2>
+                      {canEdit ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startRenameColumn(column.id, column.title)}
+                            className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-cyan-500"
+                            aria-label={`Rename ${column.title}`}
+                            disabled={updateColumnMutation.isPending}
+                          >
+                            Rename
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveColumn(column.id, 'left')}
+                            className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-cyan-500 disabled:opacity-50"
+                            aria-label={`Move ${column.title} left`}
+                            disabled={index === 0 || updateColumnMutation.isPending}
+                          >
+                            ←
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveColumn(column.id, 'right')}
+                            className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-cyan-500 disabled:opacity-50"
+                            aria-label={`Move ${column.title} right`}
+                            disabled={index === columns.length - 1 || updateColumnMutation.isPending}
+                          >
+                            →
+                          </button>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
                 <ColumnDropzone columnId={column.id} cards={column.cards} dndDisabled={!canEdit} />
               </article>
             ))}
