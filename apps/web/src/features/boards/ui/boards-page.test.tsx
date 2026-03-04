@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useRoleStore } from '@/features/auth/model/role-store'
 import { BoardsPage } from './boards-page'
 
 const listBoardsMock = vi.fn()
@@ -34,6 +35,7 @@ function renderPage() {
 describe('BoardsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useRoleStore.setState({ role: 'owner' })
     listBoardsMock.mockResolvedValue({
       boards: [],
     })
@@ -65,5 +67,18 @@ describe('BoardsPage', () => {
 
     expect(await screen.findByText(/expected string to have >=1 characters/)).toBeVisible()
     expect(createBoardMock).not.toHaveBeenCalled()
+  })
+
+  it('disables board creation for viewer role', async () => {
+    useRoleStore.setState({ role: 'viewer' })
+    const user = userEvent.setup()
+    renderPage()
+
+    const button = screen.getByRole('button', { name: 'Create board' })
+    expect(button).toBeDisabled()
+
+    await user.click(button)
+    expect(createBoardMock).not.toHaveBeenCalled()
+    expect(screen.getByText('Viewer role: board creation is disabled.')).toBeVisible()
   })
 })

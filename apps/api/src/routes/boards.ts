@@ -11,6 +11,7 @@ import {
 
 import type { InMemoryBoardStore } from '../domain/board-store.js'
 import type { RealtimeHub } from '../realtime/realtime-hub.js'
+import { requireWriteRole } from '../auth/rbac.js'
 
 const BOARD_ID_PARAMS_SCHEMA = z.object({
   boardId: entityIdSchema,
@@ -39,6 +40,10 @@ export async function registerBoardRoutes(
   })
 
   app.post('/boards', async (request, reply) => {
+    if (!requireWriteRole(request, reply)) {
+      return
+    }
+
     const parsed = createBoardBodySchema.safeParse(request.body)
     if (!parsed.success) {
       return replyValidationError(reply, 'Invalid board payload')
@@ -63,6 +68,10 @@ export async function registerBoardRoutes(
   })
 
   app.post('/boards/:boardId/columns', async (request, reply) => {
+    if (!requireWriteRole(request, reply)) {
+      return
+    }
+
     const params = BOARD_ID_PARAMS_SCHEMA.safeParse(request.params)
     if (!params.success) {
       return replyValidationError(reply, 'Invalid board id')
@@ -91,6 +100,10 @@ export async function registerBoardRoutes(
   })
 
   app.patch('/columns/:columnId', async (request, reply) => {
+    if (!requireWriteRole(request, reply)) {
+      return
+    }
+
     const params = COLUMN_ID_PARAMS_SCHEMA.safeParse(request.params)
     if (!params.success) {
       return replyValidationError(reply, 'Invalid column id')
@@ -119,6 +132,10 @@ export async function registerBoardRoutes(
   })
 
   app.post('/columns/:columnId/cards', async (request, reply) => {
+    if (!requireWriteRole(request, reply)) {
+      return
+    }
+
     const params = COLUMN_ID_PARAMS_SCHEMA.safeParse(request.params)
     if (!params.success) {
       return replyValidationError(reply, 'Invalid column id')
@@ -147,6 +164,10 @@ export async function registerBoardRoutes(
   })
 
   app.patch('/cards/:cardId', async (request, reply) => {
+    if (!requireWriteRole(request, reply)) {
+      return
+    }
+
     const params = CARD_ID_PARAMS_SCHEMA.safeParse(request.params)
     if (!params.success) {
       return replyValidationError(reply, 'Invalid card id')
@@ -193,6 +214,10 @@ export async function registerBoardRoutes(
   })
 
   app.delete('/cards/:cardId', async (request, reply) => {
+    if (!requireWriteRole(request, reply)) {
+      return
+    }
+
     const params = CARD_ID_PARAMS_SCHEMA.safeParse(request.params)
     if (!params.success) {
       return replyValidationError(reply, 'Invalid card id')

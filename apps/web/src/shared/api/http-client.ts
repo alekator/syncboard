@@ -1,3 +1,5 @@
+import { getCurrentRole } from '@/features/auth/model/role-store'
+
 const DEFAULT_API_URL = 'http://localhost:3001'
 
 function buildUrl(path: string) {
@@ -6,10 +8,13 @@ function buildUrl(path: string) {
 }
 
 export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const role = getCurrentRole()
+
   const response = await fetch(buildUrl(path), {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      'x-syncboard-role': role,
       ...(init?.headers ?? {}),
     },
   })

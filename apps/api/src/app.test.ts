@@ -145,6 +145,24 @@ describe('buildApp', () => {
     expect(response.json()).toEqual({ message: 'Invalid board payload' })
   })
 
+  it('forbids board mutations for viewer role', async () => {
+    app = await buildApp({ origin: '*' })
+
+    const createBoard = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        'x-syncboard-role': 'viewer',
+      },
+      payload: { name: 'Read only board' },
+    })
+
+    expect(createBoard.statusCode).toBe(403)
+    expect(createBoard.json()).toEqual({
+      message: 'Forbidden: viewer role cannot modify board state',
+    })
+  })
+
   it('broadcasts realtime events for board clients over websocket', async () => {
     app = await buildApp({ origin: '*' })
     await app.listen({ host: '127.0.0.1', port: 0 })

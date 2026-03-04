@@ -19,6 +19,8 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import type { BoardCard, BoardSnapshot } from '@syncboard/shared'
 
 import { boardQueryKeys } from '@/entities/board/api/query-keys'
+import { useRoleStore } from '@/features/auth/model/role-store'
+import { RoleSwitcher } from '@/features/auth/ui/role-switcher'
 import { moveCardOptimistic } from '@/features/board/dnd/card-dnd'
 import { useBoardUiStore } from '@/features/board/model/board-ui-store'
 import { useBoardRealtimeSync } from '@/features/board/realtime/use-board-realtime-sync'
@@ -36,16 +38,19 @@ type CreateCardForm = z.infer<typeof createCardFormSchema>
 
 type DraggableCardProps = {
   card: BoardCard
+  disabled: boolean
 }
 
 type ColumnDropzoneProps = {
   columnId: string
   cards: BoardCard[]
+  dndDisabled: boolean
 }
 
-function DraggableCard({ card }: DraggableCardProps) {
+function DraggableCard({ card, disabled }: DraggableCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `card:${card.id}`,
+    disabled,
     data: {
       type: 'card',
       cardId: card.id,
@@ -71,20 +76,21 @@ function DraggableCard({ card }: DraggableCardProps) {
   )
 }
 
-function ColumnDropzone({ columnId, cards }: ColumnDropzoneProps) {
+function ColumnDropzone({ columnId, cards, dndDisabled }: ColumnDropzoneProps) {
   const { setNodeRef } = useDroppable({
     id: `column:${columnId}`,
     data: {
       type: 'column',
       columnId,
     },
+    disabled: dndDisabled,
   })
 
   return (
     <ul ref={setNodeRef} className="space-y-2">
       <SortableContext items={cards.map((card) => `card:${card.id}`)} strategy={verticalListSortingStrategy}>
         {cards.map((card) => (
-          <DraggableCard key={card.id} card={card} />
+          <DraggableCard key={card.id} card={card} disabled={dndDisabled} />
         ))}
       </SortableContext>
     </ul>
@@ -95,6 +101,8 @@ export function BoardPage() {
   const params = useParams()
   const boardId = params.boardId
   const queryClient = useQueryClient()
+  const role = useRoleStore((state) => state.role)
+  const canEdit = role !== 'viewer'
   const { selectedColumnId, setSelectedColumnId } = useBoardUiStore()
   const { status: realtimeStatus, onlineUserIds, currentUserId } = useBoardRealtimeSync(boardId)
   const sensors = useSensors(
@@ -174,7 +182,7 @@ export function BoardPage() {
   })
 
   const handleDragEnd = (event: DragEndEvent) => {
-    if (!boardId || !boardQuery.data || !event.over) {
+    if (!canEdit || !boardId || !boardQuery.data || !event.over) {
       return
     }
 
@@ -232,7 +240,7 @@ export function BoardPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
-        <header className="flex items-center justify-between">
+        <header className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold">
               {boardQuery.data?.board.name ?? 'Loading board...'}
@@ -258,16 +266,28 @@ export function BoardPage() {
                 ))
               )}
             </div>
+            {!canEdit ? (
+              <p className="mt-2 text-xs text-amber-300">Viewer role: editing is disabled.</p>
+            ) : null}
           </div>
-          <Link className="text-sm text-cyan-400 hover:text-cyan-300" to="/">
-            Back to boards
-          </Link>
+          <div className="flex flex-col items-end gap-2">
+            <RoleSwitcher />
+            <Link className="text-sm text-cyan-400 hover:text-cyan-300" to="/">
+              Back to boards
+            </Link>
+          </div>
         </header>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
           <form
             className="flex flex-col gap-3 sm:flex-row"
-            onSubmit={createColumnForm.handleSubmit((values) => createColumnMutation.mutate(values))}
+            onSubmit={createColumnForm.handleSubmit((values) => {
+              if (!canEdit) {
+                return
+              }
+
+              createColumnMutation.mutate(values)
+            })}
           >
             <input
               {...createColumnForm.register('title')}
@@ -277,7 +297,7 @@ export function BoardPage() {
             <button
               type="submit"
               className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={createColumnMutation.isPending}
+              disabled={!canEdit || createColumnMutation.isPending}
             >
               Add column
             </button>
@@ -287,7 +307,13 @@ export function BoardPage() {
         <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
           <form
             className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]"
-            onSubmit={createCardForm.handleSubmit((values) => createCardMutation.mutate(values))}
+            onSubmit={createCardForm.handleSubmit((values) => {
+              if (!canEdit) {
+                return
+              }
+
+              createCardMutation.mutate(values)
+            })}
           >
             <input
               {...createCardForm.register('title')}
@@ -319,7 +345,7 @@ export function BoardPage() {
             <button
               type="submit"
               className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={createCardMutation.isPending}
+              disabled={!canEdit || createCardMutation.isPending}
             >
               Add card
             </button>
@@ -329,12 +355,16 @@ export function BoardPage() {
         {boardQuery.isLoading ? <p>Loading board snapshot...</p> : null}
         {boardQuery.isError ? <p className="text-rose-400">Failed to load board snapshot.</p> : null}
 
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={canEdit ? sensors : []}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {boardQuery.data?.columns.map((column) => (
               <article key={column.id} className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
                 <h2 className="mb-3 text-lg font-semibold">{column.title}</h2>
-                <ColumnDropzone columnId={column.id} cards={column.cards} />
+                <ColumnDropzone columnId={column.id} cards={column.cards} dndDisabled={!canEdit} />
               </article>
             ))}
           </section>

@@ -5,6 +5,8 @@ import { useForm } from 'react-hook-form'
 import { Link } from 'react-router-dom'
 
 import { boardQueryKeys } from '@/entities/board/api/query-keys'
+import { useRoleStore } from '@/features/auth/model/role-store'
+import { RoleSwitcher } from '@/features/auth/ui/role-switcher'
 import { createBoard, listBoards } from '@/features/boards/api/boards-api'
 
 type CreateBoardForm = {
@@ -13,6 +15,8 @@ type CreateBoardForm = {
 
 export function BoardsPage() {
   const queryClient = useQueryClient()
+  const role = useRoleStore((state) => state.role)
+  const canEdit = role !== 'viewer'
   const boardsQuery = useQuery({
     queryKey: boardQueryKeys.list(),
     queryFn: listBoards,
@@ -34,6 +38,10 @@ export function BoardsPage() {
   })
 
   const onSubmit = form.handleSubmit((values) => {
+    if (!canEdit) {
+      return
+    }
+
     createBoardMutation.mutate(values)
   })
 
@@ -41,8 +49,13 @@ export function BoardsPage() {
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-10">
         <header className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight">SyncBoard</h1>
-          <p className="text-slate-300">Realtime collaboration workspace</p>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h1 className="text-4xl font-bold tracking-tight">SyncBoard</h1>
+              <p className="text-slate-300">Realtime collaboration workspace</p>
+            </div>
+            <RoleSwitcher />
+          </div>
         </header>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
@@ -54,7 +67,7 @@ export function BoardsPage() {
             />
             <button
               type="submit"
-              disabled={createBoardMutation.isPending}
+              disabled={!canEdit || createBoardMutation.isPending}
               className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {createBoardMutation.isPending ? 'Creating...' : 'Create board'}
@@ -62,6 +75,9 @@ export function BoardsPage() {
           </form>
           {form.formState.errors.name ? (
             <p className="mt-2 text-sm text-rose-400">{form.formState.errors.name.message}</p>
+          ) : null}
+          {!canEdit ? (
+            <p className="mt-2 text-sm text-amber-300">Viewer role: board creation is disabled.</p>
           ) : null}
         </section>
 
