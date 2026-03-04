@@ -10,12 +10,15 @@ import { resolvePersistenceConfig } from './config/persistence.js'
 import { RealtimeHub } from './realtime/realtime-hub.js'
 import { PrismaBoardStore } from './infrastructure/prisma/prisma-board-store.js'
 import { PrismaSessionStore } from './infrastructure/prisma/prisma-session-store.js'
+import { createRedisClient } from './infrastructure/redis/redis-client.js'
+import { RedisPresenceStore } from './infrastructure/redis/redis-presence-store.js'
 import { registerAuthRoutes } from './routes/auth.js'
 import { registerBoardRoutes } from './routes/boards.js'
 import { registerHealthRoute } from './routes/health.js'
 import { registerRealtimeRoutes } from './routes/realtime.js'
 import type { BoardStore } from './domain/board-store.js'
 import type { SessionStore } from './auth/session-store.js'
+import type { PresenceStore } from './realtime/presence-store.js'
 
 const APP_ORIGIN_SCHEMA = z.string().min(1).default('*')
 
@@ -24,6 +27,7 @@ type BuildAppOptions = {
   boardStore?: BoardStore
   realtimeHub?: RealtimeHub
   sessionStore?: SessionStore
+  presenceStore?: PresenceStore
 }
 
 export async function buildApp(options: BuildAppOptions = {}) {
@@ -35,8 +39,21 @@ export async function buildApp(options: BuildAppOptions = {}) {
 
   const origin = APP_ORIGIN_SCHEMA.parse(options.origin ?? process.env.APP_ORIGIN)
   let boardStore = options.boardStore ?? new InMemoryBoardStore()
-  const realtimeHub = options.realtimeHub ?? new RealtimeHub()
+  let presenceStore = options.presenceStore
   let sessionStore = options.sessionStore ?? new InMemorySessionStore()
+
+  if (!presenceStore && persistenceConfig.redisUrl) {
+    const redis = createRedisClient(persistenceConfig.redisUrl)
+    presenceStore = new RedisPresenceStore(redis)
+
+    app.addHook('onClose', async () => {
+      await redis.quit()
+    })
+
+    app.log.info('Redis presence store enabled')
+  }
+
+  const realtimeHub = options.realtimeHub ?? new RealtimeHub(presenceStore)
 
   app.log.info({ mode: persistenceConfig.mode }, 'Persistence mode resolved')
   if (

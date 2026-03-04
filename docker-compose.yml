@@ -1,0 +1,81 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: syncboard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: syncboard
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d syncboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: syncboard-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: node:20-alpine
+    container_name: syncboard-api
+    working_dir: /workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      HOST: 0.0.0.0
+      APP_ORIGIN: http://localhost:5173
+      PERSISTENCE_MODE: postgres
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/syncboard?schema=public
+      REDIS_URL: redis://redis:6379
+    command: >
+      sh -c "corepack enable &&
+      pnpm install &&
+      pnpm --filter @syncboard/api db:generate &&
+      pnpm --filter @syncboard/api db:push &&
+      pnpm --filter @syncboard/api dev"
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./:/workspace
+
+  web:
+    image: node:20-alpine
+    container_name: syncboard-web
+    working_dir: /workspace
+    depends_on:
+      - api
+    environment:
+      VITE_API_URL: http://localhost:3001
+      VITE_WS_URL: ws://localhost:3001/ws
+    command: >
+      sh -c "corepack enable &&
+      pnpm install &&
+      pnpm --filter @syncboard/web dev --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./:/workspace
+
+volumes:
+  postgres-data:
+  redis-data:

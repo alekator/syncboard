@@ -1,5 +1,6 @@
 import type WebSocket from 'ws'
 import { realtimeEventEnvelopeSchema, type RealtimeEventEnvelope } from '@syncboard/shared'
+import { InMemoryPresenceStore, type PresenceStore } from './presence-store.js'
 
 type RealtimeClient = {
   socket: WebSocket
@@ -12,6 +13,8 @@ export class RealtimeHub {
   private readonly sequenceByBoard = new Map<string, number>()
   private readonly versionByBoard = new Map<string, number>()
 
+  constructor(private readonly presenceStore: PresenceStore = new InMemoryPresenceStore()) {}
+
   registerClient(socket: WebSocket, userId: string) {
     return {
       socket,
@@ -20,13 +23,13 @@ export class RealtimeHub {
     } satisfies RealtimeClient
   }
 
-  unregisterClient(client: RealtimeClient) {
+  async unregisterClient(client: RealtimeClient) {
     for (const boardId of client.boardIds) {
-      this.leaveBoard(client, boardId)
+      await this.leaveBoard(client, boardId)
     }
   }
 
-  joinBoard(client: RealtimeClient, boardId: string) {
+  async joinBoard(client: RealtimeClient, boardId: string) {
     let clients = this.boardClients.get(boardId)
     if (!clients) {
       clients = new Set<RealtimeClient>()
@@ -35,6 +38,7 @@ export class RealtimeHub {
 
     clients.add(client)
     client.boardIds.add(boardId)
+    await this.presenceStore.markOnline(boardId, client.userId)
 
     this.publishBoardEvent({
       boardId,
@@ -49,7 +53,7 @@ export class RealtimeHub {
     })
   }
 
-  leaveBoard(client: RealtimeClient, boardId: string) {
+  async leaveBoard(client: RealtimeClient, boardId: string) {
     const clients = this.boardClients.get(boardId)
     if (!clients || !clients.has(client)) {
       return
@@ -61,6 +65,7 @@ export class RealtimeHub {
     if (clients.size === 0) {
       this.boardClients.delete(boardId)
     }
+    await this.presenceStore.markOffline(boardId, client.userId)
 
     this.publishBoardEvent({
       boardId,

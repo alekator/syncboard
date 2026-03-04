@@ -42,23 +42,23 @@ export async function registerRealtimeRoutes(
     const userId = query.success ? (query.data.userId ?? randomUUID()) : randomUUID()
     const client = realtimeHub.registerClient(socket, userId)
 
-    socket.on('message', (raw) => {
+    socket.on('message', async (raw) => {
       const parsed = parseClientMessage(raw)
       if (!parsed || !parsed.success) {
         return
       }
 
       if (parsed.data.type === 'board.join') {
-        realtimeHub.joinBoard(client, parsed.data.boardId)
+        await realtimeHub.joinBoard(client, parsed.data.boardId)
       }
 
       if (parsed.data.type === 'board.leave') {
-        realtimeHub.leaveBoard(client, parsed.data.boardId)
+        await realtimeHub.leaveBoard(client, parsed.data.boardId)
       }
     })
 
     socket.on('close', () => {
-      realtimeHub.unregisterClient(client)
+      void realtimeHub.unregisterClient(client)
     })
   })
 }
