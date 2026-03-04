@@ -10,11 +10,17 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@fastify/websocket": "^11.2.0",
+    "@prisma/client": "^6.16.2",
     "@syncboard/shared": "workspace:*",
     "fastify": "^5.7.4",
     "ws": "^8.19.0",
@@ -26,6 +32,7 @@
     "@types/ws": "^8.18.1",
     "eslint": "^9.39.3",
     "globals": "^16.5.0",
+    "prisma": "^6.16.2",
     "tsx": "^4.21.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.56.1",

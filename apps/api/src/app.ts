@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { InMemoryBoardStore } from './domain/board-store.js'
 import { InMemorySessionStore } from './auth/session-store.js'
+import { resolvePersistenceConfig } from './config/persistence.js'
 import { RealtimeHub } from './realtime/realtime-hub.js'
 import { registerAuthRoutes } from './routes/auth.js'
 import { registerBoardRoutes } from './routes/boards.js'
@@ -21,6 +22,8 @@ type BuildAppOptions = {
 }
 
 export async function buildApp(options: BuildAppOptions = {}) {
+  const persistenceConfig = resolvePersistenceConfig()
+
   const app = Fastify({
     logger: true,
   })
@@ -29,6 +32,11 @@ export async function buildApp(options: BuildAppOptions = {}) {
   const boardStore = options.boardStore ?? new InMemoryBoardStore()
   const realtimeHub = options.realtimeHub ?? new RealtimeHub()
   const sessionStore = options.sessionStore ?? new InMemorySessionStore()
+
+  app.log.info({ mode: persistenceConfig.mode }, 'Persistence mode resolved')
+  if (persistenceConfig.mode === 'postgres') {
+    app.log.warn('Postgres mode selected. Runtime repository migration is in progress; using memory store.')
+  }
 
   await app.register(cors, { origin })
   await app.register(websocket)

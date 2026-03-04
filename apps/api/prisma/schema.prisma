@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BoardRole {
+  owner
+  editor
+  viewer
+}
+
+model User {
+  id        String        @id @default(uuid())
+  name      String
+  sessions  Session[]
+  members   BoardMember[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+model Session {
+  token     String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Board {
+  id        String       @id @default(uuid())
+  name      String
+  columns   BoardColumn[]
+  cards     BoardCard[]
+  members   BoardMember[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+model BoardMember {
+  id        String    @id @default(uuid())
+  boardId   String
+  userId    String
+  role      BoardRole
+  board     Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([boardId, userId])
+}
+
+model BoardColumn {
+  id        String      @id @default(uuid())
+  boardId   String
+  title     String
+  position  Float
+  board     Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards     BoardCard[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([boardId, position])
+}
+
+model BoardCard {
+  id          String      @id @default(uuid())
+  boardId     String
+  columnId    String
+  title       String
+  description String
+  position    Float
+  board       Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  column      BoardColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([columnId, position])
+  @@index([boardId])
+}
