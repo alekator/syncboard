@@ -10,6 +10,7 @@ import {
 } from '@syncboard/shared'
 
 import type { InMemoryBoardStore } from '../domain/board-store.js'
+import type { RealtimeHub } from '../realtime/realtime-hub.js'
 
 const BOARD_ID_PARAMS_SCHEMA = z.object({
   boardId: entityIdSchema,
@@ -27,7 +28,11 @@ function replyValidationError(reply: FastifyReply, message: string) {
   return reply.status(400).send({ message })
 }
 
-export async function registerBoardRoutes(app: FastifyInstance, store: InMemoryBoardStore) {
+export async function registerBoardRoutes(
+  app: FastifyInstance,
+  store: InMemoryBoardStore,
+  realtimeHub: RealtimeHub,
+) {
   app.get('/boards', async () => {
     const boards = store.listBoards()
     return { boards }
@@ -73,6 +78,15 @@ export async function registerBoardRoutes(app: FastifyInstance, store: InMemoryB
       return reply.status(404).send({ message: 'Board not found' })
     }
 
+    realtimeHub.publishBoardEvent({
+      boardId: column.boardId,
+      entityId: column.id,
+      event: {
+        type: 'column.created',
+        payload: column,
+      },
+    })
+
     return reply.status(201).send(column)
   })
 
@@ -91,6 +105,15 @@ export async function registerBoardRoutes(app: FastifyInstance, store: InMemoryB
     if (!column) {
       return reply.status(404).send({ message: 'Column not found' })
     }
+
+    realtimeHub.publishBoardEvent({
+      boardId: column.boardId,
+      entityId: column.id,
+      event: {
+        type: 'column.updated',
+        payload: column,
+      },
+    })
 
     return column
   })
@@ -111,6 +134,15 @@ export async function registerBoardRoutes(app: FastifyInstance, store: InMemoryB
       return reply.status(404).send({ message: 'Column not found' })
     }
 
+    realtimeHub.publishBoardEvent({
+      boardId: card.boardId,
+      entityId: card.id,
+      event: {
+        type: 'card.created',
+        payload: card,
+      },
+    })
+
     return reply.status(201).send(card)
   })
 
@@ -130,6 +162,33 @@ export async function registerBoardRoutes(app: FastifyInstance, store: InMemoryB
       return reply.status(404).send({ message: 'Card not found or invalid target column' })
     }
 
+    const isMoveEvent = body.data.columnId !== undefined || body.data.position !== undefined
+    if (isMoveEvent) {
+      realtimeHub.publishBoardEvent({
+        boardId: card.boardId,
+        entityId: card.id,
+        event: {
+          type: 'card.moved',
+          payload: {
+            id: card.id,
+            boardId: card.boardId,
+            columnId: card.columnId,
+            position: card.position,
+            updatedAt: card.updatedAt,
+          },
+        },
+      })
+    } else {
+      realtimeHub.publishBoardEvent({
+        boardId: card.boardId,
+        entityId: card.id,
+        event: {
+          type: 'card.updated',
+          payload: card,
+        },
+      })
+    }
+
     return card
   })
 
@@ -139,10 +198,27 @@ export async function registerBoardRoutes(app: FastifyInstance, store: InMemoryB
       return replyValidationError(reply, 'Invalid card id')
     }
 
+    const card = store.getCard(params.data.cardId)
+    if (!card) {
+      return reply.status(404).send({ message: 'Card not found' })
+    }
+
     const deleted = store.deleteCard(params.data.cardId)
     if (!deleted) {
       return reply.status(404).send({ message: 'Card not found' })
     }
+
+    realtimeHub.publishBoardEvent({
+      boardId: card.boardId,
+      entityId: card.id,
+      event: {
+        type: 'card.deleted',
+        payload: {
+          id: card.id,
+          boardId: card.boardId,
+        },
+      },
+    })
 
     return reply.status(204).send()
   })

@@ -1,6 +1,45 @@
+import { once } from 'node:events'
+import type { AddressInfo } from 'node:net'
+
 import { afterEach, describe, expect, it } from 'vitest'
+import WebSocket from 'ws'
+import type { RawData } from 'ws'
 
 import { buildApp } from './app.js'
+
+async function waitForRealtimeMessage(
+  socket: WebSocket,
+  predicate: (payload: unknown) => boolean,
+  timeoutMs = 2_000,
+) {
+  return new Promise<unknown>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup()
+      reject(new Error('Timed out waiting for realtime message'))
+    }, timeoutMs)
+
+    const onMessage = (raw: RawData) => {
+      const text = typeof raw === 'string' ? raw : raw.toString('utf-8')
+
+      try {
+        const payload = JSON.parse(text) as unknown
+        if (predicate(payload)) {
+          cleanup()
+          resolve(payload)
+        }
+      } catch {
+        // Ignore invalid payloads.
+      }
+    }
+
+    const cleanup = () => {
+      clearTimeout(timeout)
+      socket.off('message', onMessage)
+    }
+
+    socket.on('message', onMessage)
+  })
+}
 
 describe('buildApp', () => {
   let app: Awaited<ReturnType<typeof buildApp>> | undefined
@@ -104,5 +143,79 @@ describe('buildApp', () => {
 
     expect(response.statusCode).toBe(400)
     expect(response.json()).toEqual({ message: 'Invalid board payload' })
+  })
+
+  it('broadcasts realtime events for board clients over websocket', async () => {
+    app = await buildApp({ origin: '*' })
+    await app.listen({ host: '127.0.0.1', port: 0 })
+
+    const createBoard = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      payload: { name: 'Realtime Board' },
+    })
+    const board = createBoard.json()
+
+    const address = app.server.address() as AddressInfo
+    const userId = '11111111-1111-4111-8111-111111111111'
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws?userId=${userId}`)
+    await once(socket, 'open')
+
+    const presencePromise = waitForRealtimeMessage(
+      socket,
+      (payload) =>
+        typeof payload === 'object' &&
+        payload !== null &&
+        'event' in payload &&
+        typeof payload.event === 'object' &&
+        payload.event !== null &&
+        'type' in payload.event &&
+        payload.event.type === 'presence.update',
+    )
+
+    socket.send(JSON.stringify({ type: 'board.join', boardId: board.id }))
+    const presenceEvent = (await presencePromise) as {
+      boardId: string
+      event: { type: string; payload: { online: boolean } }
+    }
+    expect(presenceEvent.boardId).toBe(board.id)
+    expect(presenceEvent.event.payload.online).toBe(true)
+
+    const columnEventPromise = waitForRealtimeMessage(
+      socket,
+      (payload) =>
+        typeof payload === 'object' &&
+        payload !== null &&
+        'event' in payload &&
+        typeof payload.event === 'object' &&
+        payload.event !== null &&
+        'type' in payload.event &&
+        payload.event.type === 'column.created',
+    )
+
+    const createColumn = await app.inject({
+      method: 'POST',
+      url: `/boards/${board.id}/columns`,
+      payload: { title: 'Incoming' },
+    })
+    expect(createColumn.statusCode).toBe(201)
+
+    const columnEvent = (await columnEventPromise) as {
+      event: {
+        type: string
+        payload: { boardId: string; title: string }
+      }
+      sequence: number
+      version: number
+    }
+
+    expect(columnEvent.event.type).toBe('column.created')
+    expect(columnEvent.event.payload.boardId).toBe(board.id)
+    expect(columnEvent.event.payload.title).toBe('Incoming')
+    expect(columnEvent.sequence).toBeGreaterThan(0)
+    expect(columnEvent.version).toBeGreaterThan(0)
+
+    socket.close()
+    await once(socket, 'close')
   })
 })

@@ -30,6 +30,10 @@ export class InMemoryBoardStore {
     return this.boards.get(boardId) ?? null
   }
 
+  getCard(cardId: EntityId) {
+    return this.cards.get(cardId) ?? null
+  }
+
   getBoardSnapshot(boardId: EntityId): BoardSnapshot | null {
     const board = this.getBoard(boardId)
     if (!board) {
