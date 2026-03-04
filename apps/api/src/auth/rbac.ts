@@ -4,6 +4,10 @@ import { boardRoleSchema, type BoardRole } from '@syncboard/shared'
 const ROLE_HEADER_NAME = 'x-syncboard-role'
 
 export function getRequestRole(request: FastifyRequest): BoardRole {
+  if (request.authUser) {
+    return request.authUser.role
+  }
+
   const raw = request.headers[ROLE_HEADER_NAME]
   const value = Array.isArray(raw) ? raw[0] : raw
   const parsed = boardRoleSchema.safeParse(value)

@@ -5,8 +5,7 @@ import { useForm } from 'react-hook-form'
 import { Link } from 'react-router-dom'
 
 import { boardQueryKeys } from '@/entities/board/api/query-keys'
-import { useRoleStore } from '@/features/auth/model/role-store'
-import { RoleSwitcher } from '@/features/auth/ui/role-switcher'
+import { useSessionStore } from '@/features/auth/model/session-store'
 import { createBoard, listBoards } from '@/features/boards/api/boards-api'
 
 type CreateBoardForm = {
@@ -15,8 +14,9 @@ type CreateBoardForm = {
 
 export function BoardsPage() {
   const queryClient = useQueryClient()
-  const role = useRoleStore((state) => state.role)
-  const canEdit = role !== 'viewer'
+  const user = useSessionStore((state) => state.user)
+  const clearSession = useSessionStore((state) => state.clearSession)
+  const canEdit = user ? user.role !== 'viewer' : false
   const boardsQuery = useQuery({
     queryKey: boardQueryKeys.list(),
     queryFn: listBoards,
@@ -53,8 +53,19 @@ export function BoardsPage() {
             <div>
               <h1 className="text-4xl font-bold tracking-tight">SyncBoard</h1>
               <p className="text-slate-300">Realtime collaboration workspace</p>
+              {user ? (
+                <p className="mt-1 text-xs text-slate-400">
+                  Signed in as {user.name} ({user.role})
+                </p>
+              ) : null}
             </div>
-            <RoleSwitcher />
+            <button
+              type="button"
+              onClick={() => clearSession()}
+              className="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-200 hover:border-cyan-500"
+            >
+              Sign out
+            </button>
           </div>
         </header>
 

@@ -163,6 +163,63 @@ describe('buildApp', () => {
     })
   })
 
+  it('creates auth session and returns current user via /me', async () => {
+    app = await buildApp({ origin: '*' })
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { name: 'Azazel', role: 'editor' },
+    })
+
+    expect(login.statusCode).toBe(200)
+    const session = login.json()
+    expect(session.user.name).toBe('Azazel')
+    expect(session.user.role).toBe('editor')
+    expect(typeof session.token).toBe('string')
+
+    const me = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
+    })
+
+    expect(me.statusCode).toBe(200)
+    expect(me.json()).toEqual({
+      user: expect.objectContaining({
+        name: 'Azazel',
+        role: 'editor',
+      }),
+    })
+  })
+
+  it('enforces viewer role from bearer session token', async () => {
+    app = await buildApp({ origin: '*' })
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { name: 'Readonly', role: 'viewer' },
+    })
+    const session = login.json()
+
+    const createBoard = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
+      payload: { name: 'Blocked board' },
+    })
+
+    expect(createBoard.statusCode).toBe(403)
+    expect(createBoard.json()).toEqual({
+      message: 'Forbidden: viewer role cannot modify board state',
+    })
+  })
+
   it('broadcasts realtime events for board clients over websocket', async () => {
     app = await buildApp({ origin: '*' })
     await app.listen({ host: '127.0.0.1', port: 0 })

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useRoleStore } from '@/features/auth/model/role-store'
+import { useSessionStore } from '@/features/auth/model/session-store'
 import { BoardsPage } from './boards-page'
 
 const listBoardsMock = vi.fn()
@@ -35,7 +35,14 @@ function renderPage() {
 describe('BoardsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useRoleStore.setState({ role: 'owner' })
+    useSessionStore.setState({
+      token: 'token-owner',
+      user: {
+        id: '11111111-1111-4111-8111-111111111111',
+        name: 'Owner',
+        role: 'owner',
+      },
+    })
     listBoardsMock.mockResolvedValue({
       boards: [],
     })
@@ -70,7 +77,14 @@ describe('BoardsPage', () => {
   })
 
   it('disables board creation for viewer role', async () => {
-    useRoleStore.setState({ role: 'viewer' })
+    useSessionStore.setState({
+      token: 'token-viewer',
+      user: {
+        id: '22222222-2222-4222-8222-222222222222',
+        name: 'Viewer',
+        role: 'viewer',
+      },
+    })
     const user = userEvent.setup()
     renderPage()
 

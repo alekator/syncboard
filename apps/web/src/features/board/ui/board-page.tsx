@@ -19,8 +19,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import type { BoardCard, BoardSnapshot } from '@syncboard/shared'
 
 import { boardQueryKeys } from '@/entities/board/api/query-keys'
-import { useRoleStore } from '@/features/auth/model/role-store'
-import { RoleSwitcher } from '@/features/auth/ui/role-switcher'
+import { useSessionStore } from '@/features/auth/model/session-store'
 import { moveCardOptimistic } from '@/features/board/dnd/card-dnd'
 import { useBoardUiStore } from '@/features/board/model/board-ui-store'
 import { useBoardRealtimeSync } from '@/features/board/realtime/use-board-realtime-sync'
@@ -101,8 +100,9 @@ export function BoardPage() {
   const params = useParams()
   const boardId = params.boardId
   const queryClient = useQueryClient()
-  const role = useRoleStore((state) => state.role)
-  const canEdit = role !== 'viewer'
+  const user = useSessionStore((state) => state.user)
+  const clearSession = useSessionStore((state) => state.clearSession)
+  const canEdit = user ? user.role !== 'viewer' : false
   const { selectedColumnId, setSelectedColumnId } = useBoardUiStore()
   const { status: realtimeStatus, onlineUserIds, currentUserId } = useBoardRealtimeSync(boardId)
   const sensors = useSensors(
@@ -271,7 +271,18 @@ export function BoardPage() {
             ) : null}
           </div>
           <div className="flex flex-col items-end gap-2">
-            <RoleSwitcher />
+            {user ? (
+              <p className="text-xs text-slate-400">
+                {user.name} ({user.role})
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => clearSession()}
+              className="rounded-md border border-slate-700 px-3 py-1 text-xs text-slate-200 hover:border-cyan-500"
+            >
+              Sign out
+            </button>
             <Link className="text-sm text-cyan-400 hover:text-cyan-300" to="/">
               Back to boards
             </Link>

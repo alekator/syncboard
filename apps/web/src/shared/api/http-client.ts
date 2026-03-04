@@ -1,4 +1,4 @@
-import { getCurrentRole } from '@/features/auth/model/role-store'
+import { getSessionSnapshot } from '@/features/auth/model/session-store'
 
 const DEFAULT_API_URL = 'http://localhost:3001'
 
@@ -8,13 +8,14 @@ function buildUrl(path: string) {
 }
 
 export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const role = getCurrentRole()
+  const session = getSessionSnapshot()
 
   const response = await fetch(buildUrl(path), {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      'x-syncboard-role': role,
+      ...(session.user?.role ? { 'x-syncboard-role': session.user.role } : {}),
+      ...(session.token ? { authorization: `Bearer ${session.token}` } : {}),
       ...(init?.headers ?? {}),
     },
   })
