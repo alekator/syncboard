@@ -33,6 +33,7 @@ import {
   updateCard,
   updateColumn,
 } from '@/features/boards/api/boards-api'
+import { useToast } from '@/shared/ui/toast-store'
 
 function sortByPosition<T extends { position: number }>(items: T[]) {
   return [...items].sort((a, b) => a.position - b.position)
@@ -235,6 +236,7 @@ export function BoardPage() {
   const user = useSessionStore((state) => state.user)
   const clearSession = useSessionStore((state) => state.clearSession)
   const canEdit = user ? user.role !== 'viewer' : false
+  const toast = useToast()
   const { selectedColumnId, setSelectedColumnId } = useBoardUiStore()
   const { status: realtimeStatus, onlineUserIds, currentUserId } = useBoardRealtimeSync(boardId)
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null)
@@ -294,6 +296,10 @@ export function BoardPage() {
       if (boardId) {
         void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
       }
+      toast.success('Column created')
+    },
+    onError: () => {
+      toast.error('Failed to create column')
     },
   })
 
@@ -309,6 +315,10 @@ export function BoardPage() {
       if (boardId) {
         void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
       }
+      toast.success('Card created')
+    },
+    onError: () => {
+      toast.error('Failed to create card')
     },
   })
 
@@ -319,6 +329,7 @@ export function BoardPage() {
       if (boardId) {
         void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
       }
+      toast.error('Failed to move card')
       console.error(`Failed to move card ${variables.cardId}`)
     },
   })
@@ -352,11 +363,13 @@ export function BoardPage() {
 
       setEditingCardId(null)
       setEditCardForm({ title: '', description: '' })
+      toast.success('Card updated')
     },
     onError: () => {
       if (boardId) {
         void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
       }
+      toast.error('Failed to update card')
     },
   })
 
@@ -384,6 +397,9 @@ export function BoardPage() {
 
       return { previous }
     },
+    onSuccess: () => {
+      toast.success('Card deleted')
+    },
     onError: (_error, _cardId, context) => {
       if (!boardId) {
         return
@@ -394,13 +410,14 @@ export function BoardPage() {
       } else {
         void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
       }
+      toast.error('Failed to delete card')
     },
   })
 
   const updateColumnMutation = useMutation({
     mutationFn: (input: { columnId: string; title?: string; position?: number }) =>
       updateColumn(input.columnId, { title: input.title, position: input.position }),
-    onSuccess: (updatedColumn) => {
+    onSuccess: (updatedColumn, variables) => {
       if (!boardId) {
         return
       }
@@ -419,11 +436,15 @@ export function BoardPage() {
           ),
         }
       })
+      if (variables.title !== undefined) {
+        toast.success('Column renamed')
+      }
     },
     onError: () => {
       if (boardId) {
         void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
       }
+      toast.error('Failed to update column')
     },
   })
 

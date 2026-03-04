@@ -8,6 +8,7 @@ import { Link } from 'react-router-dom'
 import { boardQueryKeys } from '@/entities/board/api/query-keys'
 import { useSessionStore } from '@/features/auth/model/session-store'
 import { createBoard, deleteBoard, listBoards, updateBoard } from '@/features/boards/api/boards-api'
+import { useToast } from '@/shared/ui/toast-store'
 
 type CreateBoardForm = {
   name: string
@@ -18,6 +19,7 @@ export function BoardsPage() {
   const user = useSessionStore((state) => state.user)
   const clearSession = useSessionStore((state) => state.clearSession)
   const canEdit = user ? user.role !== 'viewer' : false
+  const toast = useToast()
   const [editingBoardId, setEditingBoardId] = useState<string | null>(null)
   const [editingBoardName, setEditingBoardName] = useState('')
   const boardsQuery = useQuery({
@@ -37,6 +39,10 @@ export function BoardsPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: boardQueryKeys.list() })
       form.reset()
+      toast.success('Board created')
+    },
+    onError: () => {
+      toast.error('Failed to create board')
     },
   })
 
@@ -46,6 +52,10 @@ export function BoardsPage() {
       void queryClient.invalidateQueries({ queryKey: boardQueryKeys.list() })
       setEditingBoardId(null)
       setEditingBoardName('')
+      toast.success('Board renamed')
+    },
+    onError: () => {
+      toast.error('Failed to rename board')
     },
   })
 
@@ -53,6 +63,10 @@ export function BoardsPage() {
     mutationFn: (boardId: string) => deleteBoard(boardId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: boardQueryKeys.list() })
+      toast.success('Board deleted')
+    },
+    onError: () => {
+      toast.error('Failed to delete board')
     },
   })
 
