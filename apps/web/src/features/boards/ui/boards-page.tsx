@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { createBoardBodySchema } from '@syncboard/shared'
 import { useForm } from 'react-hook-form'
@@ -8,6 +9,9 @@ import { Link } from 'react-router-dom'
 import { boardQueryKeys } from '@/entities/board/api/query-keys'
 import { useSessionStore } from '@/features/auth/model/session-store'
 import { createBoard, deleteBoard, listBoards, updateBoard } from '@/features/boards/api/boards-api'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { useToast } from '@/shared/ui/toast-store'
 
 type CreateBoardForm = {
@@ -22,10 +26,20 @@ export function BoardsPage() {
   const toast = useToast()
   const [editingBoardId, setEditingBoardId] = useState<string | null>(null)
   const [editingBoardName, setEditingBoardName] = useState('')
+  const listScrollRef = useRef<HTMLDivElement | null>(null)
   const boardsQuery = useQuery({
     queryKey: boardQueryKeys.list(),
     queryFn: listBoards,
   })
+  const boards = boardsQuery.data?.boards ?? []
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const rowVirtualizer = useVirtualizer({
+    count: boards.length,
+    getScrollElement: () => listScrollRef.current,
+    estimateSize: () => 64,
+    overscan: 6,
+  })
+  const virtualRows = rowVirtualizer.getVirtualItems()
 
   const form = useForm<CreateBoardForm>({
     resolver: zodResolver(createBoardBodySchema),
@@ -97,6 +111,70 @@ export function BoardsPage() {
     updateBoardMutation.mutate({ boardId, name: nextName })
   }
 
+  const renderBoardItem = (board: { id: string; name: string }) => (
+    <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-4 py-3">
+      {editingBoardId === board.id ? (
+        <>
+          <Input
+            value={editingBoardName}
+            onChange={(event) => setEditingBoardName(event.target.value)}
+            className="h-8 bg-slate-900 px-2 py-1"
+            aria-label={`Board name ${board.name}`}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => saveEditBoard(board.id)}
+            disabled={updateBoardMutation.isPending}
+          >
+            Save
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={cancelEditBoard}
+            disabled={updateBoardMutation.isPending}
+          >
+            Cancel
+          </Button>
+        </>
+      ) : (
+        <>
+          <Link className="flex flex-1 items-center justify-between hover:text-cyan-300" to={`/boards/${board.id}`}>
+            <span className="font-medium">{board.name}</span>
+            <span className="text-xs text-slate-400">Open</span>
+          </Link>
+          {canEdit ? (
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => startEditBoard(board.id, board.name)}
+                aria-label={`Rename ${board.name}`}
+                disabled={updateBoardMutation.isPending || deleteBoardMutation.isPending}
+              >
+                Rename
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => deleteBoardMutation.mutate(board.id)}
+                aria-label={`Delete ${board.name}`}
+                disabled={updateBoardMutation.isPending || deleteBoardMutation.isPending}
+              >
+                Delete
+              </Button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  )
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-10">
@@ -111,30 +189,30 @@ export function BoardsPage() {
                 </p>
               ) : null}
             </div>
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => clearSession()}
-              className="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-200 hover:border-cyan-500"
             >
               Sign out
-            </button>
+            </Button>
           </div>
         </header>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
           <form className="flex flex-col gap-3 sm:flex-row" onSubmit={onSubmit}>
-            <input
+            <Input
               {...form.register('name')}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none ring-0 placeholder:text-slate-500 focus:border-cyan-500"
+              className="h-10 w-full"
               placeholder="New board name"
             />
-            <button
+            <Button
               type="submit"
               disabled={!canEdit || createBoardMutation.isPending}
-              className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {createBoardMutation.isPending ? 'Creating...' : 'Create board'}
-            </button>
+            </Button>
           </form>
           {form.formState.errors.name ? (
             <p className="mt-2 text-sm text-rose-400">{form.formState.errors.name.message}</p>
@@ -149,94 +227,55 @@ export function BoardsPage() {
 
           {boardsQuery.isLoading ? (
             <div role="status" aria-label="Loading boards" className="space-y-2">
-              <div className="h-12 animate-pulse rounded-lg bg-slate-800" />
-              <div className="h-12 animate-pulse rounded-lg bg-slate-800" />
-              <div className="h-12 animate-pulse rounded-lg bg-slate-800" />
+              <Skeleton className="h-12 rounded-lg" />
+              <Skeleton className="h-12 rounded-lg" />
+              <Skeleton className="h-12 rounded-lg" />
             </div>
           ) : null}
           {boardsQuery.isError ? (
             <div className="flex items-center gap-3">
               <p className="text-rose-400">Failed to load boards. Check API connection.</p>
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => void boardsQuery.refetch()}
-                className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-cyan-500"
               >
                 Retry
-              </button>
+              </Button>
             </div>
           ) : null}
 
-          {!boardsQuery.isLoading && boardsQuery.data?.boards.length === 0 ? (
+          {!boardsQuery.isLoading && boards.length === 0 ? (
             <p className="text-slate-300">No boards yet. Create the first one.</p>
           ) : null}
 
-          <ul className="grid gap-3">
-            {boardsQuery.data?.boards.map((board) => (
-              <li key={board.id}>
-                <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-4 py-3">
-                  {editingBoardId === board.id ? (
-                    <>
-                      <input
-                        value={editingBoardName}
-                        onChange={(event) => setEditingBoardName(event.target.value)}
-                        className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm outline-none focus:border-cyan-500"
-                        aria-label={`Board name ${board.name}`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => saveEditBoard(board.id)}
-                        className="rounded-md border border-cyan-600 px-2 py-1 text-xs hover:border-cyan-500"
-                        disabled={updateBoardMutation.isPending}
+          {boards.length > 0 ? (
+            <div ref={listScrollRef} className="max-h-[28rem] overflow-auto pr-1">
+              {virtualRows.length === 0 ? (
+                <ul className="grid gap-3">
+                  {boards.map((board) => (
+                    <li key={board.id}>{renderBoardItem(board)}</li>
+                  ))}
+                </ul>
+              ) : (
+                <ul className="relative" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+                  {virtualRows.map((row) => {
+                    const board = boards[row.index]
+                    return (
+                      <li
+                        key={board.id}
+                        className="absolute left-0 top-0 w-full pb-3"
+                        style={{ transform: `translateY(${row.start}px)` }}
                       >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelEditBoard}
-                        className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-slate-500"
-                        disabled={updateBoardMutation.isPending}
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <Link
-                        className="flex flex-1 items-center justify-between hover:text-cyan-300"
-                        to={`/boards/${board.id}`}
-                      >
-                        <span className="font-medium">{board.name}</span>
-                        <span className="text-xs text-slate-400">Open</span>
-                      </Link>
-                      {canEdit ? (
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => startEditBoard(board.id, board.name)}
-                            className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-cyan-500"
-                            aria-label={`Rename ${board.name}`}
-                            disabled={updateBoardMutation.isPending || deleteBoardMutation.isPending}
-                          >
-                            Rename
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteBoardMutation.mutate(board.id)}
-                            className="rounded-md border border-rose-700 px-2 py-1 text-xs text-rose-300 hover:border-rose-500"
-                            aria-label={`Delete ${board.name}`}
-                            disabled={updateBoardMutation.isPending || deleteBoardMutation.isPending}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+                        {renderBoardItem(board)}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          ) : null}
         </section>
       </div>
     </main>

@@ -5,6 +5,7 @@ import { AppErrorBoundary } from './error-boundary'
 
 function CrashingComponent() {
   throw new Error('boom')
+  return null
 }
 
 describe('AppErrorBoundary', () => {

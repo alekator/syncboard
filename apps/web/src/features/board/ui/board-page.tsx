@@ -284,12 +284,13 @@ export function BoardPage() {
     control: createCardForm.control,
     name: 'columnId',
   })
-  const visibleColumns = boardQuery.data ? filterSnapshotCards(boardQuery.data, cardSearch) : []
+  const boardSnapshot = boardQuery.data
+  const visibleColumns = boardSnapshot ? filterSnapshotCards(boardSnapshot, cardSearch) : []
   const visibleCardsCount = visibleColumns.reduce((sum, column) => sum + column.cards.length, 0)
-  const hasNoColumns = Boolean(boardQuery.data) && boardQuery.data.columns.length === 0
+  const hasNoColumns = boardSnapshot !== undefined && boardSnapshot.columns.length === 0
   const hasNoSearchResults =
-    Boolean(boardQuery.data) &&
-    boardQuery.data.columns.length > 0 &&
+    boardSnapshot !== undefined &&
+    boardSnapshot.columns.length > 0 &&
     visibleCardsCount === 0 &&
     cardSearch.trim().length > 0
   const otherDraggingUsers = draggingUserIds.filter((userId) => userId !== currentUserId)
