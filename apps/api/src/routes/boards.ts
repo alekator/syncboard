@@ -1,57 +1,27 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
+import {
+  createBoardBodySchema,
+  createCardBodySchema,
+  createColumnBodySchema,
+  entityIdSchema,
+  updateCardBodySchema,
+  updateColumnBodySchema,
+} from '@syncboard/shared'
 
 import type { InMemoryBoardStore } from '../domain/board-store.js'
 
 const BOARD_ID_PARAMS_SCHEMA = z.object({
-  boardId: z.uuid(),
+  boardId: entityIdSchema,
 })
 
 const COLUMN_ID_PARAMS_SCHEMA = z.object({
-  columnId: z.uuid(),
+  columnId: entityIdSchema,
 })
 
 const CARD_ID_PARAMS_SCHEMA = z.object({
-  cardId: z.uuid(),
+  cardId: entityIdSchema,
 })
-
-const CREATE_BOARD_BODY_SCHEMA = z.object({
-  name: z.string().trim().min(1).max(120),
-})
-
-const CREATE_COLUMN_BODY_SCHEMA = z.object({
-  title: z.string().trim().min(1).max(120),
-})
-
-const UPDATE_COLUMN_BODY_SCHEMA = z
-  .object({
-    title: z.string().trim().min(1).max(120).optional(),
-    position: z.number().finite().optional(),
-  })
-  .refine((value) => value.title !== undefined || value.position !== undefined, {
-    message: 'At least one field is required',
-  })
-
-const CREATE_CARD_BODY_SCHEMA = z.object({
-  title: z.string().trim().min(1).max(160),
-  description: z.string().max(10_000).optional(),
-})
-
-const UPDATE_CARD_BODY_SCHEMA = z
-  .object({
-    title: z.string().trim().min(1).max(160).optional(),
-    description: z.string().max(10_000).optional(),
-    columnId: z.uuid().optional(),
-    position: z.number().finite().optional(),
-  })
-  .refine(
-    (value) =>
-      value.title !== undefined ||
-      value.description !== undefined ||
-      value.columnId !== undefined ||
-      value.position !== undefined,
-    { message: 'At least one field is required' },
-  )
 
 function replyValidationError(reply: FastifyReply, message: string) {
   return reply.status(400).send({ message })
@@ -64,7 +34,7 @@ export async function registerBoardRoutes(app: FastifyInstance, store: InMemoryB
   })
 
   app.post('/boards', async (request, reply) => {
-    const parsed = CREATE_BOARD_BODY_SCHEMA.safeParse(request.body)
+    const parsed = createBoardBodySchema.safeParse(request.body)
     if (!parsed.success) {
       return replyValidationError(reply, 'Invalid board payload')
     }
@@ -93,7 +63,7 @@ export async function registerBoardRoutes(app: FastifyInstance, store: InMemoryB
       return replyValidationError(reply, 'Invalid board id')
     }
 
-    const body = CREATE_COLUMN_BODY_SCHEMA.safeParse(request.body)
+    const body = createColumnBodySchema.safeParse(request.body)
     if (!body.success) {
       return replyValidationError(reply, 'Invalid column payload')
     }
@@ -112,7 +82,7 @@ export async function registerBoardRoutes(app: FastifyInstance, store: InMemoryB
       return replyValidationError(reply, 'Invalid column id')
     }
 
-    const body = UPDATE_COLUMN_BODY_SCHEMA.safeParse(request.body)
+    const body = updateColumnBodySchema.safeParse(request.body)
     if (!body.success) {
       return replyValidationError(reply, 'Invalid column payload')
     }
@@ -131,7 +101,7 @@ export async function registerBoardRoutes(app: FastifyInstance, store: InMemoryB
       return replyValidationError(reply, 'Invalid column id')
     }
 
-    const body = CREATE_CARD_BODY_SCHEMA.safeParse(request.body)
+    const body = createCardBodySchema.safeParse(request.body)
     if (!body.success) {
       return replyValidationError(reply, 'Invalid card payload')
     }
@@ -150,7 +120,7 @@ export async function registerBoardRoutes(app: FastifyInstance, store: InMemoryB
       return replyValidationError(reply, 'Invalid card id')
     }
 
-    const body = UPDATE_CARD_BODY_SCHEMA.safeParse(request.body)
+    const body = updateCardBodySchema.safeParse(request.body)
     if (!body.success) {
       return replyValidationError(reply, 'Invalid card payload')
     }
