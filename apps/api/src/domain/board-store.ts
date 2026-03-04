@@ -7,6 +7,8 @@ const POSITION_STEP = 1_000
 export interface BoardStore {
   listBoards(): Promise<Board[]>
   createBoard(name: string): Promise<Board>
+  updateBoard(boardId: EntityId, updates: { name?: string }): Promise<Board | null>
+  deleteBoard(boardId: EntityId): Promise<boolean>
   getBoard(boardId: EntityId): Promise<Board | null>
   getCard(cardId: EntityId): Promise<BoardCard | null>
   getBoardSnapshot(boardId: EntityId): Promise<BoardSnapshot | null>
@@ -46,6 +48,43 @@ export class InMemoryBoardStore implements BoardStore {
 
     this.boards.set(board.id, board)
     return board
+  }
+
+  async updateBoard(boardId: EntityId, updates: { name?: string }) {
+    const board = this.boards.get(boardId)
+    if (!board) {
+      return null
+    }
+
+    if (updates.name !== undefined) {
+      board.name = updates.name
+    }
+
+    board.updatedAt = new Date().toISOString()
+    return board
+  }
+
+  async deleteBoard(boardId: EntityId) {
+    const board = this.boards.get(boardId)
+    if (!board) {
+      return false
+    }
+
+    this.boards.delete(boardId)
+
+    for (const column of this.columns.values()) {
+      if (column.boardId === boardId) {
+        this.columns.delete(column.id)
+      }
+    }
+
+    for (const card of this.cards.values()) {
+      if (card.boardId === boardId) {
+        this.cards.delete(card.id)
+      }
+    }
+
+    return true
   }
 
   async getBoard(boardId: EntityId) {

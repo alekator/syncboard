@@ -29,6 +29,24 @@ export async function createBoard(input: { name: string }) {
   return boardSchema.parse(payload)
 }
 
+export async function updateBoard(boardId: string, input: { name: string }) {
+  const id = entityIdSchema.parse(boardId)
+  const body = createBoardBodySchema.parse(input)
+  const payload = await requestJson(`/boards/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+
+  return boardSchema.parse(payload)
+}
+
+export async function deleteBoard(boardId: string) {
+  const id = entityIdSchema.parse(boardId)
+  await requestJson<void>(`/boards/${id}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function getBoardSnapshot(boardId: string) {
   const id = entityIdSchema.parse(boardId)
   const payload = await requestJson(`/boards/${id}`)

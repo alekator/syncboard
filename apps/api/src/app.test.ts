@@ -158,6 +158,32 @@ describe('buildApp', () => {
     })
 
     expect(deleteCard.statusCode).toBe(204)
+
+    const updateBoard = await app.inject({
+      method: 'PATCH',
+      url: `/boards/${board.id}`,
+      payload: { name: 'Product Roadmap Updated' },
+    })
+
+    expect(updateBoard.statusCode).toBe(200)
+    expect(updateBoard.json()).toEqual(
+      expect.objectContaining({
+        id: board.id,
+        name: 'Product Roadmap Updated',
+      }),
+    )
+
+    const deleteBoard = await app.inject({
+      method: 'DELETE',
+      url: `/boards/${board.id}`,
+    })
+    expect(deleteBoard.statusCode).toBe(204)
+
+    const missingSnapshot = await app.inject({
+      method: 'GET',
+      url: `/boards/${board.id}`,
+    })
+    expect(missingSnapshot.statusCode).toBe(404)
   })
 
   it('rejects invalid board payload', async () => {

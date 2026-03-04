@@ -82,6 +82,43 @@ export class PrismaBoardStore implements BoardStore {
     return mapBoard(board)
   }
 
+  async updateBoard(boardId: string, updates: { name?: string }) {
+    const existing = await this.prisma.board.findUnique({
+      where: { id: boardId },
+      select: { id: true },
+    })
+
+    if (!existing) {
+      return null
+    }
+
+    const board = await this.prisma.board.update({
+      where: { id: boardId },
+      data: {
+        ...(updates.name !== undefined ? { name: updates.name } : {}),
+      },
+    })
+
+    return mapBoard(board)
+  }
+
+  async deleteBoard(boardId: string) {
+    const existing = await this.prisma.board.findUnique({
+      where: { id: boardId },
+      select: { id: true },
+    })
+
+    if (!existing) {
+      return false
+    }
+
+    await this.prisma.board.delete({
+      where: { id: boardId },
+    })
+
+    return true
+  }
+
   async getBoard(boardId: string) {
     const board = await this.prisma.board.findUnique({
       where: { id: boardId },

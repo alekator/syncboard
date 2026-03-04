@@ -67,6 +67,47 @@ export async function registerBoardRoutes(
     return snapshot
   })
 
+  app.patch('/boards/:boardId', async (request, reply) => {
+    if (!requireWriteRole(request, reply)) {
+      return
+    }
+
+    const params = BOARD_ID_PARAMS_SCHEMA.safeParse(request.params)
+    if (!params.success) {
+      return replyValidationError(reply, 'Invalid board id')
+    }
+
+    const body = createBoardBodySchema.safeParse(request.body)
+    if (!body.success) {
+      return replyValidationError(reply, 'Invalid board payload')
+    }
+
+    const board = await store.updateBoard(params.data.boardId, { name: body.data.name })
+    if (!board) {
+      return reply.status(404).send({ message: 'Board not found' })
+    }
+
+    return board
+  })
+
+  app.delete('/boards/:boardId', async (request, reply) => {
+    if (!requireWriteRole(request, reply)) {
+      return
+    }
+
+    const params = BOARD_ID_PARAMS_SCHEMA.safeParse(request.params)
+    if (!params.success) {
+      return replyValidationError(reply, 'Invalid board id')
+    }
+
+    const deleted = await store.deleteBoard(params.data.boardId)
+    if (!deleted) {
+      return reply.status(404).send({ message: 'Board not found' })
+    }
+
+    return reply.status(204).send()
+  })
+
   app.post('/boards/:boardId/columns', async (request, reply) => {
     if (!requireWriteRole(request, reply)) {
       return

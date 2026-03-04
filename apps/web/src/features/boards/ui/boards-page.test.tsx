@@ -9,10 +9,14 @@ import { BoardsPage } from './boards-page'
 
 const listBoardsMock = vi.fn()
 const createBoardMock = vi.fn()
+const updateBoardMock = vi.fn()
+const deleteBoardMock = vi.fn()
 
 vi.mock('@/features/boards/api/boards-api', () => ({
   listBoards: () => listBoardsMock(),
   createBoard: (payload: { name: string }) => createBoardMock(payload),
+  updateBoard: (boardId: string, payload: { name: string }) => updateBoardMock(boardId, payload),
+  deleteBoard: (boardId: string) => deleteBoardMock(boardId),
 }))
 
 function renderPage() {
@@ -44,7 +48,14 @@ describe('BoardsPage', () => {
       },
     })
     listBoardsMock.mockResolvedValue({
-      boards: [],
+      boards: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          name: 'Platform',
+          createdAt: '2026-03-05T00:00:00.000Z',
+          updatedAt: '2026-03-05T00:00:00.000Z',
+        },
+      ],
     })
     createBoardMock.mockResolvedValue({
       id: '11111111-1111-4111-8111-111111111111',
@@ -52,6 +63,13 @@ describe('BoardsPage', () => {
       createdAt: '2026-03-05T00:00:00.000Z',
       updatedAt: '2026-03-05T00:00:00.000Z',
     })
+    updateBoardMock.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      name: 'Platform Updated',
+      createdAt: '2026-03-05T00:00:00.000Z',
+      updatedAt: '2026-03-05T00:00:00.000Z',
+    })
+    deleteBoardMock.mockResolvedValue(undefined)
   })
 
   it('creates a board from form submit', async () => {
@@ -76,6 +94,35 @@ describe('BoardsPage', () => {
     expect(createBoardMock).not.toHaveBeenCalled()
   })
 
+  it('renames a board from list item actions', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByText('Platform')
+    await user.click(screen.getByRole('button', { name: 'Rename Platform' }))
+    await user.clear(screen.getByLabelText('Board name Platform'))
+    await user.type(screen.getByLabelText('Board name Platform'), 'Platform Updated')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(updateBoardMock).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', {
+        name: 'Platform Updated',
+      })
+    })
+  })
+
+  it('deletes a board from list item actions', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByText('Platform')
+    await user.click(screen.getByRole('button', { name: 'Delete Platform' }))
+
+    await waitFor(() => {
+      expect(deleteBoardMock).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111')
+    })
+  })
+
   it('disables board creation for viewer role', async () => {
     useSessionStore.setState({
       token: 'token-viewer',
@@ -93,6 +140,8 @@ describe('BoardsPage', () => {
 
     await user.click(button)
     expect(createBoardMock).not.toHaveBeenCalled()
+    expect(updateBoardMock).not.toHaveBeenCalled()
+    expect(deleteBoardMock).not.toHaveBeenCalled()
     expect(screen.getByText('Viewer role: board creation is disabled.')).toBeVisible()
   })
 })

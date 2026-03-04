@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { createBoardBodySchema } from '@syncboard/shared'
@@ -6,7 +7,7 @@ import { Link } from 'react-router-dom'
 
 import { boardQueryKeys } from '@/entities/board/api/query-keys'
 import { useSessionStore } from '@/features/auth/model/session-store'
-import { createBoard, listBoards } from '@/features/boards/api/boards-api'
+import { createBoard, deleteBoard, listBoards, updateBoard } from '@/features/boards/api/boards-api'
 
 type CreateBoardForm = {
   name: string
@@ -17,6 +18,8 @@ export function BoardsPage() {
   const user = useSessionStore((state) => state.user)
   const clearSession = useSessionStore((state) => state.clearSession)
   const canEdit = user ? user.role !== 'viewer' : false
+  const [editingBoardId, setEditingBoardId] = useState<string | null>(null)
+  const [editingBoardName, setEditingBoardName] = useState('')
   const boardsQuery = useQuery({
     queryKey: boardQueryKeys.list(),
     queryFn: listBoards,
@@ -37,6 +40,22 @@ export function BoardsPage() {
     },
   })
 
+  const updateBoardMutation = useMutation({
+    mutationFn: (input: { boardId: string; name: string }) => updateBoard(input.boardId, { name: input.name }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: boardQueryKeys.list() })
+      setEditingBoardId(null)
+      setEditingBoardName('')
+    },
+  })
+
+  const deleteBoardMutation = useMutation({
+    mutationFn: (boardId: string) => deleteBoard(boardId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: boardQueryKeys.list() })
+    },
+  })
+
   const onSubmit = form.handleSubmit((values) => {
     if (!canEdit) {
       return
@@ -44,6 +63,25 @@ export function BoardsPage() {
 
     createBoardMutation.mutate(values)
   })
+
+  const startEditBoard = (boardId: string, boardName: string) => {
+    setEditingBoardId(boardId)
+    setEditingBoardName(boardName)
+  }
+
+  const cancelEditBoard = () => {
+    setEditingBoardId(null)
+    setEditingBoardName('')
+  }
+
+  const saveEditBoard = (boardId: string) => {
+    const nextName = editingBoardName.trim()
+    if (!nextName) {
+      return
+    }
+
+    updateBoardMutation.mutate({ boardId, name: nextName })
+  }
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -107,13 +145,66 @@ export function BoardsPage() {
           <ul className="grid gap-3">
             {boardsQuery.data?.boards.map((board) => (
               <li key={board.id}>
-                <Link
-                  className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 hover:border-cyan-500"
-                  to={`/boards/${board.id}`}
-                >
-                  <span className="font-medium">{board.name}</span>
-                  <span className="text-xs text-slate-400">Open</span>
-                </Link>
+                <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-4 py-3">
+                  {editingBoardId === board.id ? (
+                    <>
+                      <input
+                        value={editingBoardName}
+                        onChange={(event) => setEditingBoardName(event.target.value)}
+                        className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm outline-none focus:border-cyan-500"
+                        aria-label={`Board name ${board.name}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => saveEditBoard(board.id)}
+                        className="rounded-md border border-cyan-600 px-2 py-1 text-xs hover:border-cyan-500"
+                        disabled={updateBoardMutation.isPending}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditBoard}
+                        className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-slate-500"
+                        disabled={updateBoardMutation.isPending}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        className="flex flex-1 items-center justify-between hover:text-cyan-300"
+                        to={`/boards/${board.id}`}
+                      >
+                        <span className="font-medium">{board.name}</span>
+                        <span className="text-xs text-slate-400">Open</span>
+                      </Link>
+                      {canEdit ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startEditBoard(board.id, board.name)}
+                            className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-cyan-500"
+                            aria-label={`Rename ${board.name}`}
+                            disabled={updateBoardMutation.isPending || deleteBoardMutation.isPending}
+                          >
+                            Rename
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteBoardMutation.mutate(board.id)}
+                            className="rounded-md border border-rose-700 px-2 py-1 text-xs text-rose-300 hover:border-rose-500"
+                            aria-label={`Delete ${board.name}`}
+                            disabled={updateBoardMutation.isPending || deleteBoardMutation.isPending}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
