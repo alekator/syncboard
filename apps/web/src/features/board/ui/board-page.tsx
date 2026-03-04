@@ -22,6 +22,7 @@ import { boardQueryKeys } from '@/entities/board/api/query-keys'
 import { useSessionStore } from '@/features/auth/model/session-store'
 import { moveCardOptimistic } from '@/features/board/dnd/card-dnd'
 import { reorderColumnOptimistic } from '@/features/board/dnd/column-order'
+import { filterSnapshotCards } from '@/features/board/model/card-filter'
 import { useBoardUiStore } from '@/features/board/model/board-ui-store'
 import { useBoardRealtimeSync } from '@/features/board/realtime/use-board-realtime-sync'
 import {
@@ -238,6 +239,7 @@ export function BoardPage() {
   const { status: realtimeStatus, onlineUserIds, currentUserId } = useBoardRealtimeSync(boardId)
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null)
   const [editingColumnTitle, setEditingColumnTitle] = useState('')
+  const [cardSearch, setCardSearch] = useState('')
   const [editingCardId, setEditingCardId] = useState<string | null>(null)
   const [editCardForm, setEditCardForm] = useState<EditCardForm>({
     title: '',
@@ -274,6 +276,8 @@ export function BoardPage() {
     control: createCardForm.control,
     name: 'columnId',
   })
+  const visibleColumns = boardQuery.data ? filterSnapshotCards(boardQuery.data, cardSearch) : []
+  const visibleCardsCount = visibleColumns.reduce((sum, column) => sum + column.cards.length, 0)
 
   useEffect(() => {
     const firstColumnId = boardQuery.data?.columns[0]?.id
@@ -680,6 +684,19 @@ export function BoardPage() {
           </form>
         </section>
 
+        <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <input
+              value={cardSearch}
+              onChange={(event) => setCardSearch(event.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none placeholder:text-slate-500 focus:border-cyan-500 sm:max-w-sm"
+              placeholder="Search cards by title or description"
+              aria-label="Search cards"
+            />
+            <p className="text-xs text-slate-400">Visible cards: {visibleCardsCount}</p>
+          </div>
+        </section>
+
         {boardQuery.isLoading ? <p>Loading board snapshot...</p> : null}
         {boardQuery.isError ? <p className="text-rose-400">Failed to load board snapshot.</p> : null}
 
@@ -689,7 +706,7 @@ export function BoardPage() {
           onDragEnd={handleDragEnd}
         >
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {boardQuery.data?.columns.map((column, index, columns) => (
+            {visibleColumns.map((column, index, columns) => (
               <article key={column.id} className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
                 <div className="mb-3 flex items-start justify-between gap-2">
                   {editingColumnId === column.id ? (
