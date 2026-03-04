@@ -286,6 +286,12 @@ export function BoardPage() {
   })
   const visibleColumns = boardQuery.data ? filterSnapshotCards(boardQuery.data, cardSearch) : []
   const visibleCardsCount = visibleColumns.reduce((sum, column) => sum + column.cards.length, 0)
+  const hasNoColumns = Boolean(boardQuery.data) && boardQuery.data.columns.length === 0
+  const hasNoSearchResults =
+    Boolean(boardQuery.data) &&
+    boardQuery.data.columns.length > 0 &&
+    visibleCardsCount === 0 &&
+    cardSearch.trim().length > 0
   const otherDraggingUsers = draggingUserIds.filter((userId) => userId !== currentUserId)
 
   useEffect(() => {
@@ -762,6 +768,18 @@ export function BoardPage() {
             >
               Retry
             </button>
+          </div>
+        ) : null}
+        {hasNoColumns ? (
+          <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+            <p className="text-sm text-slate-300">
+              No columns yet. Create the first column to start collaborating.
+            </p>
+          </div>
+        ) : null}
+        {hasNoSearchResults ? (
+          <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+            <p className="text-sm text-slate-300">No cards match your search query.</p>
           </div>
         ) : null}
 
