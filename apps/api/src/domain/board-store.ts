@@ -4,16 +4,38 @@ import type { Board, BoardCard, BoardColumn, BoardSnapshot, EntityId } from './t
 
 const POSITION_STEP = 1_000
 
-export class InMemoryBoardStore {
+export interface BoardStore {
+  listBoards(): Promise<Board[]>
+  createBoard(name: string): Promise<Board>
+  getBoard(boardId: EntityId): Promise<Board | null>
+  getCard(cardId: EntityId): Promise<BoardCard | null>
+  getBoardSnapshot(boardId: EntityId): Promise<BoardSnapshot | null>
+  createColumn(boardId: EntityId, title: string): Promise<BoardColumn | null>
+  updateColumn(
+    columnId: EntityId,
+    updates: { title?: string; position?: number },
+  ): Promise<BoardColumn | null>
+  createCard(
+    columnId: EntityId,
+    input: { title: string; description?: string },
+  ): Promise<BoardCard | null>
+  updateCard(
+    cardId: EntityId,
+    updates: { title?: string; description?: string; columnId?: string; position?: number },
+  ): Promise<BoardCard | null>
+  deleteCard(cardId: EntityId): Promise<boolean>
+}
+
+export class InMemoryBoardStore implements BoardStore {
   private readonly boards = new Map<EntityId, Board>()
   private readonly columns = new Map<EntityId, BoardColumn>()
   private readonly cards = new Map<EntityId, BoardCard>()
 
-  listBoards() {
+  async listBoards() {
     return [...this.boards.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   }
 
-  createBoard(name: string) {
+  async createBoard(name: string) {
     const now = new Date().toISOString()
     const board: Board = {
       id: randomUUID(),
@@ -26,16 +48,16 @@ export class InMemoryBoardStore {
     return board
   }
 
-  getBoard(boardId: EntityId) {
+  async getBoard(boardId: EntityId) {
     return this.boards.get(boardId) ?? null
   }
 
-  getCard(cardId: EntityId) {
+  async getCard(cardId: EntityId) {
     return this.cards.get(cardId) ?? null
   }
 
-  getBoardSnapshot(boardId: EntityId): BoardSnapshot | null {
-    const board = this.getBoard(boardId)
+  async getBoardSnapshot(boardId: EntityId): Promise<BoardSnapshot | null> {
+    const board = await this.getBoard(boardId)
     if (!board) {
       return null
     }
@@ -56,7 +78,7 @@ export class InMemoryBoardStore {
     }
   }
 
-  createColumn(boardId: EntityId, title: string) {
+  async createColumn(boardId: EntityId, title: string) {
     const board = this.boards.get(boardId)
     if (!board) {
       return null
@@ -79,7 +101,7 @@ export class InMemoryBoardStore {
     return column
   }
 
-  updateColumn(columnId: EntityId, updates: { title?: string; position?: number }) {
+  async updateColumn(columnId: EntityId, updates: { title?: string; position?: number }) {
     const column = this.columns.get(columnId)
     if (!column) {
       return null
@@ -104,7 +126,7 @@ export class InMemoryBoardStore {
     return column
   }
 
-  createCard(columnId: EntityId, input: { title: string; description?: string }) {
+  async createCard(columnId: EntityId, input: { title: string; description?: string }) {
     const column = this.columns.get(columnId)
     if (!column) {
       return null
@@ -129,7 +151,7 @@ export class InMemoryBoardStore {
     return card
   }
 
-  updateCard(
+  async updateCard(
     cardId: EntityId,
     updates: { title?: string; description?: string; columnId?: string; position?: number },
   ) {
@@ -166,7 +188,7 @@ export class InMemoryBoardStore {
     return card
   }
 
-  deleteCard(cardId: EntityId) {
+  async deleteCard(cardId: EntityId) {
     const card = this.cards.get(cardId)
     if (!card) {
       return false

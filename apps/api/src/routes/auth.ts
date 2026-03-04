@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { loginBodySchema } from '@syncboard/shared'
 
-import type { InMemorySessionStore } from '../auth/session-store.js'
+import type { SessionStore } from '../auth/session-store.js'
 
 function extractBearerToken(authorization: string | undefined) {
   if (!authorization) {
@@ -18,13 +18,13 @@ function extractBearerToken(authorization: string | undefined) {
 
 export async function registerAuthRoutes(
   app: FastifyInstance,
-  sessionStore: InMemorySessionStore,
+  sessionStore: SessionStore,
 ) {
   app.decorateRequest('authUser', null)
 
   app.addHook('preHandler', async (request) => {
     const token = extractBearerToken(request.headers.authorization)
-    request.authUser = token ? sessionStore.getUserByToken(token) : null
+    request.authUser = token ? await sessionStore.getUserByToken(token) : null
   })
 
   app.post('/auth/login', async (request, reply) => {
@@ -33,7 +33,7 @@ export async function registerAuthRoutes(
       return reply.status(400).send({ message: 'Invalid login payload' })
     }
 
-    const session = sessionStore.createSession(parsed.data)
+    const session = await sessionStore.createSession(parsed.data)
     return reply.status(200).send(session)
   })
 

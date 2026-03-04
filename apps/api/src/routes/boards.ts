@@ -9,7 +9,7 @@ import {
   updateColumnBodySchema,
 } from '@syncboard/shared'
 
-import type { InMemoryBoardStore } from '../domain/board-store.js'
+import type { BoardStore } from '../domain/board-store.js'
 import type { RealtimeHub } from '../realtime/realtime-hub.js'
 import { requireWriteRole } from '../auth/rbac.js'
 
@@ -31,11 +31,11 @@ function replyValidationError(reply: FastifyReply, message: string) {
 
 export async function registerBoardRoutes(
   app: FastifyInstance,
-  store: InMemoryBoardStore,
+  store: BoardStore,
   realtimeHub: RealtimeHub,
 ) {
   app.get('/boards', async () => {
-    const boards = store.listBoards()
+    const boards = await store.listBoards()
     return { boards }
   })
 
@@ -49,7 +49,7 @@ export async function registerBoardRoutes(
       return replyValidationError(reply, 'Invalid board payload')
     }
 
-    const board = store.createBoard(parsed.data.name)
+    const board = await store.createBoard(parsed.data.name)
     return reply.status(201).send(board)
   })
 
@@ -59,7 +59,7 @@ export async function registerBoardRoutes(
       return replyValidationError(reply, 'Invalid board id')
     }
 
-    const snapshot = store.getBoardSnapshot(params.data.boardId)
+    const snapshot = await store.getBoardSnapshot(params.data.boardId)
     if (!snapshot) {
       return reply.status(404).send({ message: 'Board not found' })
     }
@@ -82,7 +82,7 @@ export async function registerBoardRoutes(
       return replyValidationError(reply, 'Invalid column payload')
     }
 
-    const column = store.createColumn(params.data.boardId, body.data.title)
+    const column = await store.createColumn(params.data.boardId, body.data.title)
     if (!column) {
       return reply.status(404).send({ message: 'Board not found' })
     }
@@ -114,7 +114,7 @@ export async function registerBoardRoutes(
       return replyValidationError(reply, 'Invalid column payload')
     }
 
-    const column = store.updateColumn(params.data.columnId, body.data)
+    const column = await store.updateColumn(params.data.columnId, body.data)
     if (!column) {
       return reply.status(404).send({ message: 'Column not found' })
     }
@@ -146,7 +146,7 @@ export async function registerBoardRoutes(
       return replyValidationError(reply, 'Invalid card payload')
     }
 
-    const card = store.createCard(params.data.columnId, body.data)
+    const card = await store.createCard(params.data.columnId, body.data)
     if (!card) {
       return reply.status(404).send({ message: 'Column not found' })
     }
@@ -178,7 +178,7 @@ export async function registerBoardRoutes(
       return replyValidationError(reply, 'Invalid card payload')
     }
 
-    const card = store.updateCard(params.data.cardId, body.data)
+    const card = await store.updateCard(params.data.cardId, body.data)
     if (!card) {
       return reply.status(404).send({ message: 'Card not found or invalid target column' })
     }
@@ -223,12 +223,12 @@ export async function registerBoardRoutes(
       return replyValidationError(reply, 'Invalid card id')
     }
 
-    const card = store.getCard(params.data.cardId)
+    const card = await store.getCard(params.data.cardId)
     if (!card) {
       return reply.status(404).send({ message: 'Card not found' })
     }
 
-    const deleted = store.deleteCard(params.data.cardId)
+    const deleted = await store.deleteCard(params.data.cardId)
     if (!deleted) {
       return reply.status(404).send({ message: 'Card not found' })
     }

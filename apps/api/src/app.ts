@@ -1,5 +1,6 @@
 import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
+import { PrismaClient } from '@prisma/client'
 import Fastify from 'fastify'
 import { z } from 'zod'
 
@@ -7,18 +8,22 @@ import { InMemoryBoardStore } from './domain/board-store.js'
 import { InMemorySessionStore } from './auth/session-store.js'
 import { resolvePersistenceConfig } from './config/persistence.js'
 import { RealtimeHub } from './realtime/realtime-hub.js'
+import { PrismaBoardStore } from './infrastructure/prisma/prisma-board-store.js'
+import { PrismaSessionStore } from './infrastructure/prisma/prisma-session-store.js'
 import { registerAuthRoutes } from './routes/auth.js'
 import { registerBoardRoutes } from './routes/boards.js'
 import { registerHealthRoute } from './routes/health.js'
 import { registerRealtimeRoutes } from './routes/realtime.js'
+import type { BoardStore } from './domain/board-store.js'
+import type { SessionStore } from './auth/session-store.js'
 
 const APP_ORIGIN_SCHEMA = z.string().min(1).default('*')
 
 type BuildAppOptions = {
   origin?: string
-  boardStore?: InMemoryBoardStore
+  boardStore?: BoardStore
   realtimeHub?: RealtimeHub
-  sessionStore?: InMemorySessionStore
+  sessionStore?: SessionStore
 }
 
 export async function buildApp(options: BuildAppOptions = {}) {
@@ -29,13 +34,31 @@ export async function buildApp(options: BuildAppOptions = {}) {
   })
 
   const origin = APP_ORIGIN_SCHEMA.parse(options.origin ?? process.env.APP_ORIGIN)
-  const boardStore = options.boardStore ?? new InMemoryBoardStore()
+  let boardStore = options.boardStore ?? new InMemoryBoardStore()
   const realtimeHub = options.realtimeHub ?? new RealtimeHub()
-  const sessionStore = options.sessionStore ?? new InMemorySessionStore()
+  let sessionStore = options.sessionStore ?? new InMemorySessionStore()
 
   app.log.info({ mode: persistenceConfig.mode }, 'Persistence mode resolved')
-  if (persistenceConfig.mode === 'postgres') {
-    app.log.warn('Postgres mode selected. Runtime repository migration is in progress; using memory store.')
+  if (
+    persistenceConfig.mode === 'postgres' &&
+    !options.boardStore &&
+    !options.sessionStore &&
+    persistenceConfig.databaseUrl
+  ) {
+    process.env.DATABASE_URL = persistenceConfig.databaseUrl
+
+    const prisma = new PrismaClient()
+    await prisma.$connect()
+
+    app.addHook('onClose', async () => {
+      await prisma.$disconnect()
+    })
+
+    boardStore = new PrismaBoardStore(prisma)
+    sessionStore = new PrismaSessionStore(prisma)
+    app.log.info('Postgres repositories enabled')
+  } else if (persistenceConfig.mode === 'postgres' && !persistenceConfig.databaseUrl) {
+    app.log.warn('Postgres mode requested without DATABASE_URL; falling back to memory repositories.')
   }
 
   await app.register(cors, { origin })
