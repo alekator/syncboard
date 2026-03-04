@@ -1,0 +1,12 @@
+{
+  "name": "syncboard",
+  "private": true,
+  "packageManager": "pnpm@10.30.1",
+  "scripts": {
+    "dev:web": "pnpm --filter @syncboard/web dev",
+    "dev:api": "pnpm --filter @syncboard/api dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
