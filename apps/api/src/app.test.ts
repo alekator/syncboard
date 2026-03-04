@@ -63,6 +63,34 @@ describe('buildApp', () => {
     expect(response.json()).toEqual({ status: 'ok' })
   })
 
+  it('allows CORS preflight for PATCH and DELETE methods', async () => {
+    app = await buildApp({ origin: 'http://localhost:5173' })
+
+    const patchPreflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/cards/00000000-0000-4000-8000-000000000000',
+      headers: {
+        origin: 'http://localhost:5173',
+        'access-control-request-method': 'PATCH',
+      },
+    })
+
+    expect(patchPreflight.statusCode).toBe(204)
+    expect(patchPreflight.headers['access-control-allow-methods']).toContain('PATCH')
+
+    const deletePreflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/cards/00000000-0000-4000-8000-000000000000',
+      headers: {
+        origin: 'http://localhost:5173',
+        'access-control-request-method': 'DELETE',
+      },
+    })
+
+    expect(deletePreflight.statusCode).toBe(204)
+    expect(deletePreflight.headers['access-control-allow-methods']).toContain('DELETE')
+  })
+
   it('supports board snapshot CRUD flow', async () => {
     app = await buildApp({ origin: '*' })
 

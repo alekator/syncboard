@@ -78,7 +78,10 @@ export async function buildApp(options: BuildAppOptions = {}) {
     app.log.warn('Postgres mode requested without DATABASE_URL; falling back to memory repositories.')
   }
 
-  await app.register(cors, { origin })
+  await app.register(cors, {
+    origin,
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  })
   await app.register(websocket)
   await registerHealthRoute(app)
   await registerAuthRoutes(app, sessionStore)

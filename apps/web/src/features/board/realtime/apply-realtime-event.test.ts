@@ -98,6 +98,28 @@ describe('applyRealtimeEventToSnapshot', () => {
     expect(next.columns[0].cards[1].title).toBe('New card')
   })
 
+  it('updates card content on card.updated event', () => {
+    const next = applyRealtimeEventToSnapshot(
+      baseSnapshot(),
+      envelope({
+        type: 'card.updated',
+        payload: {
+          id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          boardId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          columnId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          title: 'Updated card',
+          description: 'Updated description',
+          position: 1000,
+          createdAt: '2026-03-05T00:00:00.000Z',
+          updatedAt: '2026-03-05T00:03:00.000Z',
+        },
+      }),
+    )
+
+    expect(next.columns[0].cards[0].title).toBe('Updated card')
+    expect(next.columns[0].cards[0].description).toBe('Updated description')
+  })
+
   it('moves card on card.moved event', () => {
     const next = applyRealtimeEventToSnapshot(
       baseSnapshot(),

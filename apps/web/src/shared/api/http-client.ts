@@ -13,7 +13,7 @@ export async function requestJson<T>(path: string, init?: RequestInit): Promise<
   const response = await fetch(buildUrl(path), {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      ...(init?.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(session.user?.role ? { 'x-syncboard-role': session.user.role } : {}),
       ...(session.token ? { authorization: `Bearer ${session.token}` } : {}),
       ...(init?.headers ?? {}),

@@ -87,3 +87,10 @@ export async function updateCard(
 
   return boardCardSchema.parse(payload)
 }
+
+export async function deleteCard(cardId: string) {
+  const id = entityIdSchema.parse(cardId)
+  await requestJson<void>(`/cards/${id}`, {
+    method: 'DELETE',
+  })
+}

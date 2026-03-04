@@ -27,6 +27,7 @@ import { useBoardRealtimeSync } from '@/features/board/realtime/use-board-realti
 import {
   createCard,
   createColumn,
+  deleteCard,
   getBoardSnapshot,
   updateCard,
   updateColumn,
@@ -46,27 +47,60 @@ const createCardFormSchema = createCardBodySchema.extend({
 
 type CreateCardForm = z.infer<typeof createCardFormSchema>
 
+type EditCardForm = {
+  title: string
+  description: string
+}
+
 type DraggableCardProps = {
   card: BoardCard
   disabled: boolean
+  canEdit: boolean
+  isEditing: boolean
+  editForm: EditCardForm
+  onStartEdit: (card: BoardCard) => void
+  onChangeEditForm: (next: EditCardForm) => void
+  onSaveEdit: (cardId: string) => void
+  onCancelEdit: () => void
+  onDelete: (cardId: string) => void
 }
 
 type ColumnDropzoneProps = {
   columnId: string
   cards: BoardCard[]
   dndDisabled: boolean
+  canEdit: boolean
+  editingCardId: string | null
+  editCardForm: EditCardForm
+  onStartEditCard: (card: BoardCard) => void
+  onChangeEditCardForm: (next: EditCardForm) => void
+  onSaveEditCard: (cardId: string) => void
+  onCancelEditCard: () => void
+  onDeleteCard: (cardId: string) => void
 }
 
-function DraggableCard({ card, disabled }: DraggableCardProps) {
+function DraggableCard({
+  card,
+  disabled,
+  canEdit,
+  isEditing,
+  editForm,
+  onStartEdit,
+  onChangeEditForm,
+  onSaveEdit,
+  onCancelEdit,
+  onDelete,
+}: DraggableCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `card:${card.id}`,
-    disabled,
+    disabled: disabled || isEditing,
     data: {
       type: 'card',
       cardId: card.id,
       columnId: card.columnId,
     },
   })
+  const sortableProps = isEditing ? {} : { ...attributes, ...listeners }
 
   return (
     <li
@@ -77,16 +111,90 @@ function DraggableCard({ card, disabled }: DraggableCardProps) {
         transition,
         opacity: isDragging ? 0.55 : 1,
       }}
-      {...attributes}
-      {...listeners}
+      {...sortableProps}
     >
-      <p className="font-medium">{card.title}</p>
-      {card.description ? <p className="mt-1 text-xs text-slate-300">{card.description}</p> : null}
+      {isEditing ? (
+        <div className="space-y-2" onPointerDown={(event) => event.stopPropagation()}>
+          <input
+            value={editForm.title}
+            onChange={(event) => onChangeEditForm({ ...editForm, title: event.target.value })}
+            className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm outline-none focus:border-cyan-500"
+            aria-label={`Card title ${card.title}`}
+          />
+          <input
+            value={editForm.description}
+            onChange={(event) =>
+              onChangeEditForm({
+                ...editForm,
+                description: event.target.value,
+              })
+            }
+            className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs outline-none focus:border-cyan-500"
+            placeholder="Description"
+            aria-label={`Card description ${card.title}`}
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onSaveEdit(card.id)}
+              className="rounded-md border border-cyan-600 px-2 py-1 text-xs hover:border-cyan-500"
+            >
+              Save card
+            </button>
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-slate-500"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="font-medium">{card.title}</p>
+          {card.description ? <p className="mt-1 text-xs text-slate-300">{card.description}</p> : null}
+          {canEdit ? (
+            <div className="mt-2 flex items-center gap-2" onPointerDown={(event) => event.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => onStartEdit(card)}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-cyan-500"
+                aria-label={`Edit ${card.title}`}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(card.id)}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="rounded-md border border-rose-700 px-2 py-1 text-xs text-rose-300 hover:border-rose-500"
+                aria-label={`Delete ${card.title}`}
+              >
+                Delete
+              </button>
+            </div>
+          ) : null}
+        </>
+      )}
     </li>
   )
 }
 
-function ColumnDropzone({ columnId, cards, dndDisabled }: ColumnDropzoneProps) {
+function ColumnDropzone({
+  columnId,
+  cards,
+  dndDisabled,
+  canEdit,
+  editingCardId,
+  editCardForm,
+  onStartEditCard,
+  onChangeEditCardForm,
+  onSaveEditCard,
+  onCancelEditCard,
+  onDeleteCard,
+}: ColumnDropzoneProps) {
   const { setNodeRef } = useDroppable({
     id: `column:${columnId}`,
     data: {
@@ -100,7 +208,19 @@ function ColumnDropzone({ columnId, cards, dndDisabled }: ColumnDropzoneProps) {
     <ul ref={setNodeRef} className="min-h-24 space-y-2 rounded-md border border-transparent p-1">
       <SortableContext items={cards.map((card) => `card:${card.id}`)} strategy={verticalListSortingStrategy}>
         {cards.map((card) => (
-          <DraggableCard key={card.id} card={card} disabled={dndDisabled} />
+          <DraggableCard
+            key={card.id}
+            card={card}
+            disabled={dndDisabled}
+            canEdit={canEdit}
+            isEditing={editingCardId === card.id}
+            editForm={editCardForm}
+            onStartEdit={onStartEditCard}
+            onChangeEditForm={onChangeEditCardForm}
+            onSaveEdit={onSaveEditCard}
+            onCancelEdit={onCancelEditCard}
+            onDelete={onDeleteCard}
+          />
         ))}
       </SortableContext>
     </ul>
@@ -118,6 +238,11 @@ export function BoardPage() {
   const { status: realtimeStatus, onlineUserIds, currentUserId } = useBoardRealtimeSync(boardId)
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null)
   const [editingColumnTitle, setEditingColumnTitle] = useState('')
+  const [editingCardId, setEditingCardId] = useState<string | null>(null)
+  const [editCardForm, setEditCardForm] = useState<EditCardForm>({
+    title: '',
+    description: '',
+  })
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 4 },
@@ -191,6 +316,80 @@ export function BoardPage() {
         void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
       }
       console.error(`Failed to move card ${variables.cardId}`)
+    },
+  })
+
+  const updateCardMutation = useMutation({
+    mutationFn: (input: { cardId: string; title: string; description: string }) =>
+      updateCard(input.cardId, {
+        title: input.title,
+        description: input.description,
+      }),
+    onSuccess: (updatedCard) => {
+      if (!boardId) {
+        return
+      }
+
+      queryClient.setQueryData<BoardSnapshot | undefined>(boardQueryKeys.detail(boardId), (current) => {
+        if (!current) {
+          return current
+        }
+
+        return {
+          ...current,
+          columns: current.columns.map((column) => ({
+            ...column,
+            cards: sortByPosition(
+              column.cards.map((card) => (card.id === updatedCard.id ? updatedCard : card)),
+            ),
+          })),
+        }
+      })
+
+      setEditingCardId(null)
+      setEditCardForm({ title: '', description: '' })
+    },
+    onError: () => {
+      if (boardId) {
+        void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
+      }
+    },
+  })
+
+  const deleteCardMutation = useMutation({
+    mutationFn: (cardId: string) => deleteCard(cardId),
+    onMutate: (cardId) => {
+      if (!boardId) {
+        return { previous: undefined as BoardSnapshot | undefined }
+      }
+
+      const previous = queryClient.getQueryData<BoardSnapshot>(boardQueryKeys.detail(boardId))
+      queryClient.setQueryData<BoardSnapshot | undefined>(boardQueryKeys.detail(boardId), (current) => {
+        if (!current) {
+          return current
+        }
+
+        return {
+          ...current,
+          columns: current.columns.map((column) => ({
+            ...column,
+            cards: column.cards.filter((card) => card.id !== cardId),
+          })),
+        }
+      })
+
+      return { previous }
+    },
+    onError: (_error, _cardId, context) => {
+      if (!boardId) {
+        return
+      }
+
+      if (context?.previous) {
+        queryClient.setQueryData(boardQueryKeys.detail(boardId), context.previous)
+      } else {
+        void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
+      }
     },
   })
 
@@ -270,6 +469,32 @@ export function BoardPage() {
     updateColumnMutation.mutate({
       columnId,
       position: optimistic.movedColumn.position,
+    })
+  }
+
+  const startEditCard = (card: BoardCard) => {
+    setEditingCardId(card.id)
+    setEditCardForm({
+      title: card.title,
+      description: card.description,
+    })
+  }
+
+  const cancelEditCard = () => {
+    setEditingCardId(null)
+    setEditCardForm({ title: '', description: '' })
+  }
+
+  const submitEditCard = (cardId: string) => {
+    const title = editCardForm.title.trim()
+    if (!title) {
+      return
+    }
+
+    updateCardMutation.mutate({
+      cardId,
+      title,
+      description: editCardForm.description,
     })
   }
 
@@ -529,7 +754,19 @@ export function BoardPage() {
                     </>
                   )}
                 </div>
-                <ColumnDropzone columnId={column.id} cards={column.cards} dndDisabled={!canEdit} />
+                <ColumnDropzone
+                  columnId={column.id}
+                  cards={column.cards}
+                  dndDisabled={!canEdit}
+                  canEdit={canEdit}
+                  editingCardId={editingCardId}
+                  editCardForm={editCardForm}
+                  onStartEditCard={startEditCard}
+                  onChangeEditCardForm={setEditCardForm}
+                  onSaveEditCard={submitEditCard}
+                  onCancelEditCard={cancelEditCard}
+                  onDeleteCard={(cardId) => deleteCardMutation.mutate(cardId)}
+                />
               </article>
             ))}
           </section>
