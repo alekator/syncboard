@@ -147,7 +147,13 @@ export function BoardsPage() {
         <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
           <h2 className="mb-4 text-lg font-semibold">Boards</h2>
 
-          {boardsQuery.isLoading ? <p>Loading boards...</p> : null}
+          {boardsQuery.isLoading ? (
+            <div role="status" aria-label="Loading boards" className="space-y-2">
+              <div className="h-12 animate-pulse rounded-lg bg-slate-800" />
+              <div className="h-12 animate-pulse rounded-lg bg-slate-800" />
+              <div className="h-12 animate-pulse rounded-lg bg-slate-800" />
+            </div>
+          ) : null}
           {boardsQuery.isError ? (
             <div className="flex items-center gap-3">
               <p className="text-rose-400">Failed to load boards. Check API connection.</p>

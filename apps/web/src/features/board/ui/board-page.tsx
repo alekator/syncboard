@@ -745,7 +745,13 @@ export function BoardPage() {
           </div>
         </section>
 
-        {boardQuery.isLoading ? <p>Loading board snapshot...</p> : null}
+        {boardQuery.isLoading ? (
+          <div role="status" aria-label="Loading board snapshot" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="h-48 animate-pulse rounded-xl bg-slate-800" />
+            <div className="h-48 animate-pulse rounded-xl bg-slate-800" />
+            <div className="h-48 animate-pulse rounded-xl bg-slate-800" />
+          </div>
+        ) : null}
         {boardQuery.isError ? (
           <div className="flex items-center gap-3">
             <p className="text-rose-400">Failed to load board snapshot.</p>

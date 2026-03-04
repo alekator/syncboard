@@ -170,4 +170,17 @@ describe('BoardsPage', () => {
     })
     expect(await screen.findByText('Platform')).toBeVisible()
   })
+
+  it('renders loading skeleton while boards are loading', () => {
+    listBoardsMock.mockImplementation(
+      () =>
+        new Promise(() => {
+          // Keep pending to assert loading state.
+        }),
+    )
+
+    renderPage()
+
+    expect(screen.getByRole('status', { name: 'Loading boards' })).toBeVisible()
+  })
 })
