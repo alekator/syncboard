@@ -115,6 +115,15 @@ export function createDemoDataset(label: string): DemoDataset {
         ]),
       },
       {
+        title: 'Testing',
+        cards: makeCards(boardName, 'Testing', [
+          `Test cases execution #${boardIndex + 1}`,
+          `Regression sweep #${boardIndex + 1}`,
+          `Cross-browser checks #${boardIndex + 1}`,
+          `UAT feedback pass #${boardIndex + 1}`,
+        ]),
+      },
+      {
         title: 'Done',
         cards: makeCards(boardName, 'Done', [
           `Release notes #${boardIndex + 1}`,
