@@ -144,4 +144,30 @@ describe('BoardsPage', () => {
     expect(deleteBoardMock).not.toHaveBeenCalled()
     expect(screen.getByText('Viewer role: board creation is disabled.')).toBeVisible()
   })
+
+  it('allows retry when boards loading fails', async () => {
+    listBoardsMock
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce({
+        boards: [
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            name: 'Platform',
+            createdAt: '2026-03-05T00:00:00.000Z',
+            updatedAt: '2026-03-05T00:00:00.000Z',
+          },
+        ],
+      })
+
+    const user = userEvent.setup()
+    renderPage()
+
+    expect(await screen.findByText('Failed to load boards. Check API connection.')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    await waitFor(() => {
+      expect(listBoardsMock).toHaveBeenCalledTimes(2)
+    })
+    expect(await screen.findByText('Platform')).toBeVisible()
+  })
 })

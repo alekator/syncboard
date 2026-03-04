@@ -746,7 +746,18 @@ export function BoardPage() {
         </section>
 
         {boardQuery.isLoading ? <p>Loading board snapshot...</p> : null}
-        {boardQuery.isError ? <p className="text-rose-400">Failed to load board snapshot.</p> : null}
+        {boardQuery.isError ? (
+          <div className="flex items-center gap-3">
+            <p className="text-rose-400">Failed to load board snapshot.</p>
+            <button
+              type="button"
+              onClick={() => void boardQuery.refetch()}
+              className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-cyan-500"
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
 
         <DndContext
           sensors={canEdit ? sensors : []}

@@ -149,7 +149,16 @@ export function BoardsPage() {
 
           {boardsQuery.isLoading ? <p>Loading boards...</p> : null}
           {boardsQuery.isError ? (
-            <p className="text-rose-400">Failed to load boards. Check API connection.</p>
+            <div className="flex items-center gap-3">
+              <p className="text-rose-400">Failed to load boards. Check API connection.</p>
+              <button
+                type="button"
+                onClick={() => void boardsQuery.refetch()}
+                className="rounded-md border border-slate-700 px-2 py-1 text-xs hover:border-cyan-500"
+              >
+                Retry
+              </button>
+            </div>
           ) : null}
 
           {!boardsQuery.isLoading && boardsQuery.data?.boards.length === 0 ? (
