@@ -86,7 +86,7 @@ function ColumnDropzone({ columnId, cards, dndDisabled }: ColumnDropzoneProps) {
   })
 
   return (
-    <ul ref={setNodeRef} className="space-y-2">
+    <ul ref={setNodeRef} className="min-h-24 space-y-2 rounded-md border border-transparent p-1">
       <SortableContext items={cards.map((card) => `card:${card.id}`)} strategy={verticalListSortingStrategy}>
         {cards.map((card) => (
           <DraggableCard key={card.id} card={card} disabled={dndDisabled} />
