@@ -8,6 +8,7 @@ import { z } from 'zod'
 
 import { boardQueryKeys } from '@/entities/board/api/query-keys'
 import { useBoardUiStore } from '@/features/board/model/board-ui-store'
+import { useBoardRealtimeSync } from '@/features/board/realtime/use-board-realtime-sync'
 import { createCard, createColumn, getBoardSnapshot } from '@/features/boards/api/boards-api'
 
 type CreateColumnForm = {
@@ -25,6 +26,7 @@ export function BoardPage() {
   const boardId = params.boardId
   const queryClient = useQueryClient()
   const { selectedColumnId, setSelectedColumnId } = useBoardUiStore()
+  const realtimeStatus = useBoardRealtimeSync(boardId)
 
   const boardQuery = useQuery({
     queryKey: boardId ? boardQueryKeys.detail(boardId) : ['boards', 'invalid-id'],
@@ -102,6 +104,9 @@ export function BoardPage() {
               {boardQuery.data?.board.name ?? 'Loading board...'}
             </h1>
             <p className="text-sm text-slate-300">Board id: {boardId}</p>
+            <p className="text-xs uppercase tracking-wide text-cyan-400">
+              Realtime: {realtimeStatus}
+            </p>
           </div>
           <Link className="text-sm text-cyan-400 hover:text-cyan-300" to="/">
             Back to boards
