@@ -238,7 +238,13 @@ export function BoardPage() {
   const canEdit = user ? user.role !== 'viewer' : false
   const toast = useToast()
   const { selectedColumnId, setSelectedColumnId } = useBoardUiStore()
-  const { status: realtimeStatus, onlineUserIds, currentUserId } = useBoardRealtimeSync(boardId)
+  const {
+    status: realtimeStatus,
+    onlineUserIds,
+    draggingUserIds,
+    currentUserId,
+    sendDraggingActivity,
+  } = useBoardRealtimeSync(boardId)
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null)
   const [editingColumnTitle, setEditingColumnTitle] = useState('')
   const [cardSearch, setCardSearch] = useState('')
@@ -280,6 +286,7 @@ export function BoardPage() {
   })
   const visibleColumns = boardQuery.data ? filterSnapshotCards(boardQuery.data, cardSearch) : []
   const visibleCardsCount = visibleColumns.reduce((sum, column) => sum + column.cards.length, 0)
+  const otherDraggingUsers = draggingUserIds.filter((userId) => userId !== currentUserId)
 
   useEffect(() => {
     const firstColumnId = boardQuery.data?.columns[0]?.id
@@ -524,6 +531,8 @@ export function BoardPage() {
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
+    sendDraggingActivity(false)
+
     if (!canEdit || !boardId || !boardQuery.data || !event.over) {
       return
     }
@@ -571,6 +580,18 @@ export function BoardPage() {
     })
   }
 
+  const handleDragStart = () => {
+    if (!canEdit) {
+      return
+    }
+
+    sendDraggingActivity(true)
+  }
+
+  const handleDragCancel = () => {
+    sendDraggingActivity(false)
+  }
+
   if (!boardId) {
     return (
       <main className="grid min-h-screen place-items-center bg-slate-950 text-slate-100">
@@ -610,6 +631,12 @@ export function BoardPage() {
             </div>
             {!canEdit ? (
               <p className="mt-2 text-xs text-amber-300">Viewer role: editing is disabled.</p>
+            ) : null}
+            {otherDraggingUsers.length > 0 ? (
+              <p className="mt-2 text-xs text-violet-300">
+                {otherDraggingUsers.length} collaborator
+                {otherDraggingUsers.length > 1 ? 's' : ''} dragging
+              </p>
             ) : null}
           </div>
           <div className="flex flex-col items-end gap-2">
@@ -724,7 +751,9 @@ export function BoardPage() {
         <DndContext
           sensors={canEdit ? sensors : []}
           collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
         >
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {visibleColumns.map((column, index, columns) => (

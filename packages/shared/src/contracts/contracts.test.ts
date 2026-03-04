@@ -60,4 +60,24 @@ describe('shared realtime contracts', () => {
 
     expect(parsed.success).toBe(true)
   })
+
+  it('validates activity update realtime envelope', () => {
+    const parsed = realtimeEventEnvelopeSchema.safeParse({
+      boardId: '0a4d53f6-5317-4d8e-8f7f-58d4c5a15412',
+      entityId: '22222222-2222-4222-8222-222222222222',
+      version: 1,
+      sequence: 43,
+      timestamp: '2026-03-05T00:00:01.000Z',
+      event: {
+        type: 'activity.update',
+        payload: {
+          userId: '22222222-2222-4222-8222-222222222222',
+          boardId: '0a4d53f6-5317-4d8e-8f7f-58d4c5a15412',
+          dragging: true,
+        },
+      },
+    })
+
+    expect(parsed.success).toBe(true)
+  })
 })

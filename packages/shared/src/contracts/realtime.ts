@@ -6,6 +6,7 @@ export const realtimeEventTypeSchema = z.enum([
   'board.join',
   'board.leave',
   'presence.update',
+  'activity.update',
   'card.created',
   'card.updated',
   'card.deleted',
@@ -23,10 +24,20 @@ export const presencePayloadSchema = z.object({
   online: z.boolean(),
 })
 
+export const activityPayloadSchema = z.object({
+  userId: entityIdSchema,
+  boardId: entityIdSchema,
+  dragging: z.boolean(),
+})
+
 export const realtimeEventPayloadSchema = z.union([
   z.object({
     type: z.literal('presence.update'),
     payload: presencePayloadSchema,
+  }),
+  z.object({
+    type: z.literal('activity.update'),
+    payload: activityPayloadSchema,
   }),
   z.object({
     type: z.literal('card.created'),

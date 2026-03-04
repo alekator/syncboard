@@ -344,6 +344,31 @@ describe('buildApp', () => {
     expect(columnEvent.sequence).toBeGreaterThan(0)
     expect(columnEvent.version).toBeGreaterThan(0)
 
+    const activityEventPromise = waitForRealtimeMessage(
+      socket,
+      (payload) =>
+        typeof payload === 'object' &&
+        payload !== null &&
+        'event' in payload &&
+        typeof payload.event === 'object' &&
+        payload.event !== null &&
+        'type' in payload.event &&
+        payload.event.type === 'activity.update',
+    )
+
+    socket.send(JSON.stringify({ type: 'activity.update', boardId: board.id, dragging: true }))
+    const activityEvent = (await activityEventPromise) as {
+      event: {
+        type: string
+        payload: { boardId: string; userId: string; dragging: boolean }
+      }
+    }
+
+    expect(activityEvent.event.type).toBe('activity.update')
+    expect(activityEvent.event.payload.boardId).toBe(board.id)
+    expect(activityEvent.event.payload.userId).toBe(userId)
+    expect(activityEvent.event.payload.dragging).toBe(true)
+
     socket.close()
     await once(socket, 'close')
   })

@@ -90,6 +90,7 @@ export class RealtimeClient {
       this.reconnectTimer = null
     }
 
+    this.sendActivity(false)
     this.leaveBoard()
     this.socket?.close()
     this.socket = null
@@ -107,6 +108,14 @@ export class RealtimeClient {
     this.send({
       type: 'board.leave',
       boardId: this.boardId,
+    })
+  }
+
+  sendActivity(dragging: boolean) {
+    this.send({
+      type: 'activity.update',
+      boardId: this.boardId,
+      dragging,
     })
   }
 

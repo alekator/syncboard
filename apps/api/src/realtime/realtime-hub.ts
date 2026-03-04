@@ -80,6 +80,25 @@ export class RealtimeHub {
     })
   }
 
+  publishActivity(client: RealtimeClient, boardId: string, dragging: boolean) {
+    const clients = this.boardClients.get(boardId)
+    if (!clients || !clients.has(client)) {
+      return
+    }
+
+    this.publishBoardEvent({
+      boardId,
+      event: {
+        type: 'activity.update',
+        payload: {
+          boardId,
+          userId: client.userId,
+          dragging,
+        },
+      },
+    })
+  }
+
   publishBoardEvent(input: {
     boardId: string
     entityId?: string

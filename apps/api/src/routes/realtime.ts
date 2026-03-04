@@ -16,6 +16,11 @@ const CLIENT_EVENT_SCHEMA = z.discriminatedUnion('type', [
     type: z.literal('board.leave'),
     boardId: entityIdSchema,
   }),
+  z.object({
+    type: z.literal('activity.update'),
+    boardId: entityIdSchema,
+    dragging: z.boolean(),
+  }),
 ])
 
 const CLIENT_QUERY_SCHEMA = z.object({
@@ -54,6 +59,10 @@ export async function registerRealtimeRoutes(
 
       if (parsed.data.type === 'board.leave') {
         await realtimeHub.leaveBoard(client, parsed.data.boardId)
+      }
+
+      if (parsed.data.type === 'activity.update') {
+        realtimeHub.publishActivity(client, parsed.data.boardId, parsed.data.dragging)
       }
     })
 
