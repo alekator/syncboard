@@ -96,7 +96,7 @@ export function BoardPage() {
   const boardId = params.boardId
   const queryClient = useQueryClient()
   const { selectedColumnId, setSelectedColumnId } = useBoardUiStore()
-  const realtimeStatus = useBoardRealtimeSync(boardId)
+  const { status: realtimeStatus, onlineUserIds, currentUserId } = useBoardRealtimeSync(boardId)
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 4 },
@@ -241,6 +241,23 @@ export function BoardPage() {
             <p className="text-xs uppercase tracking-wide text-cyan-400">
               Realtime: {realtimeStatus}
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-slate-300">Online:</span>
+              {onlineUserIds.length === 0 ? (
+                <span className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-400">
+                  nobody
+                </span>
+              ) : (
+                onlineUserIds.map((userId) => (
+                  <span
+                    key={userId}
+                    className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-300"
+                  >
+                    {currentUserId === userId ? 'You' : userId.slice(0, 8)}
+                  </span>
+                ))
+              )}
+            </div>
           </div>
           <Link className="text-sm text-cyan-400 hover:text-cyan-300" to="/">
             Back to boards

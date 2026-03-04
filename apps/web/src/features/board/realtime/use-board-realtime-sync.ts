@@ -4,6 +4,7 @@ import type { BoardSnapshot, RealtimeEventEnvelope } from '@syncboard/shared'
 
 import { boardQueryKeys } from '@/entities/board/api/query-keys'
 import { applyRealtimeEventToSnapshot } from '@/features/board/realtime/apply-realtime-event'
+import { applyPresenceEvent } from '@/features/board/realtime/presence'
 import { RealtimeClient } from '@/shared/realtime/ws-client'
 
 type RealtimeStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
@@ -11,6 +12,8 @@ type RealtimeStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnecte
 export function useBoardRealtimeSync(boardId: string | undefined) {
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<RealtimeStatus>('disconnected')
+  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([])
+  const [currentUserId] = useState(() => crypto.randomUUID())
   const latestSequenceRef = useRef(0)
 
   useEffect(() => {
@@ -18,10 +21,9 @@ export function useBoardRealtimeSync(boardId: string | undefined) {
       return
     }
 
-    const userId = crypto.randomUUID()
     const client = new RealtimeClient({
       boardId,
-      userId,
+      userId: currentUserId,
       onStateChange: setStatus,
       onConnected: () => {
         void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
@@ -36,6 +38,7 @@ export function useBoardRealtimeSync(boardId: string | undefined) {
         }
 
         latestSequenceRef.current = envelope.sequence
+        setOnlineUserIds((previous) => applyPresenceEvent(previous, envelope))
 
         queryClient.setQueryData<BoardSnapshot | undefined>(
           boardQueryKeys.detail(boardId),
@@ -56,8 +59,12 @@ export function useBoardRealtimeSync(boardId: string | undefined) {
       client.disconnect()
       latestSequenceRef.current = 0
       setStatus('disconnected')
+      setOnlineUserIds([])
     }
-  }, [boardId, queryClient])
+  }, [boardId, currentUserId, queryClient])
+  const visibleOnlineUserIds = onlineUserIds.includes(currentUserId)
+    ? onlineUserIds
+    : [...onlineUserIds, currentUserId]
 
-  return status
+  return { status, onlineUserIds: visibleOnlineUserIds, currentUserId }
 }
