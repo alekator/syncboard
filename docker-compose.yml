@@ -41,6 +41,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      CI: "true"
       PORT: 3001
       HOST: 0.0.0.0
       APP_ORIGIN: http://localhost:5173
@@ -53,6 +54,11 @@ services:
       pnpm --filter @syncboard/api db:generate &&
       pnpm --filter @syncboard/api db:push &&
       pnpm --filter @syncboard/api dev"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
     ports:
       - "3001:3001"
     volumes:
@@ -63,13 +69,14 @@ services:
     container_name: syncboard-web
     working_dir: /workspace
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     environment:
+      CI: "true"
       VITE_API_URL: http://localhost:3001
       VITE_WS_URL: ws://localhost:3001/ws
     command: >
       sh -c "corepack enable &&
-      pnpm install &&
       pnpm --filter @syncboard/web dev --host 0.0.0.0 --port 5173"
     ports:
       - "5173:5173"

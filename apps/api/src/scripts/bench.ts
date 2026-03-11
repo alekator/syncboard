@@ -60,7 +60,10 @@ const BENCH_OUTPUT_FILE = process.env.BENCH_OUTPUT_FILE
 
 const REST_ITERATIONS = Number(process.env.BENCH_REST_ITERATIONS ?? 40)
 const REST_CONCURRENCY = Number(process.env.BENCH_REST_CONCURRENCY ?? 8)
-const WS_CLIENT_SET = (process.env.BENCH_WS_CLIENTS ?? '20,50,100')
+const RATE_LIMIT_MAX_RETRIES = Number(process.env.BENCH_RATE_LIMIT_MAX_RETRIES ?? 30)
+const RATE_LIMIT_RETRY_FALLBACK_MS = Number(process.env.BENCH_RATE_LIMIT_RETRY_FALLBACK_MS ?? 1_000)
+const DEFAULT_WS_CLIENTS = BOOT_API ? '20,50,100' : '10,20'
+const WS_CLIENT_SET = (process.env.BENCH_WS_CLIENTS ?? DEFAULT_WS_CLIENTS)
   .split(',')
   .map((value) => Number(value.trim()))
   .filter((value) => Number.isFinite(value) && value > 0)
@@ -94,6 +97,10 @@ function formatMs(value: number) {
   return `${value.toFixed(2)}ms`
 }
 
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
 function printStats(label: string, values: number[]) {
   const snapshot = stats(values)
   console.log(
@@ -103,25 +110,42 @@ function printStats(label: string, values: number[]) {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit & { token?: string }): Promise<T> {
-  const response = await fetch(`${apiUrl}${path}`, {
-    ...init,
-    headers: {
-      ...(init?.body !== undefined ? { 'content-type': 'application/json' } : {}),
-      ...(init?.token ? { authorization: `Bearer ${init.token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  })
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch(`${apiUrl}${path}`, {
+      ...init,
+      headers: {
+        ...(init?.body !== undefined ? { 'content-type': 'application/json' } : {}),
+        ...(init?.token ? { authorization: `Bearer ${init.token}` } : {}),
+        ...(init?.headers ?? {}),
+      },
+    })
 
-  if (!response.ok) {
+    if (response.ok) {
+      if (response.status === 204) {
+        return undefined as T
+      }
+
+      return (await response.json()) as T
+    }
+
+    if (response.status === 429 && attempt < RATE_LIMIT_MAX_RETRIES) {
+      const retryAfterHeader = response.headers.get('retry-after')
+      const retryAfterSec = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : Number.NaN
+      const delayMs = Number.isFinite(retryAfterSec)
+        ? Math.max(1_000, retryAfterSec * 1_000)
+        : RATE_LIMIT_RETRY_FALLBACK_MS
+
+      if (attempt === 0) {
+        console.warn(`Rate limited on ${init?.method ?? 'GET'} ${path}; retrying with backoff...`)
+      }
+
+      await sleep(delayMs)
+      continue
+    }
+
     const payload = await response.text()
     throw new Error(`${init?.method ?? 'GET'} ${path} failed: ${response.status} ${payload}`)
   }
-
-  if (response.status === 204) {
-    return undefined as T
-  }
-
-  return (await response.json()) as T
 }
 
 async function login(name: string, role: 'owner' | 'editor' | 'viewer' = 'editor') {

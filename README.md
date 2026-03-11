@@ -1,220 +1,140 @@
 # SyncBoard
 
-Realtime collaborative Kanban workspace with typed contracts, optimistic updates, live board sync, and role-aware access control.
+Realtime collaborative Kanban workspace with strict access control, resilient WebSocket sync, and production-oriented engineering workflow.
 
-## Highlights
+## Table of Contents
 
-- Realtime collaboration over WebSocket rooms per board.
-- Presence tracking and ephemeral collaboration signals (`active drag`).
-- Optimistic UI with rollback paths for failed mutations.
-- Typed REST and WS contracts shared across frontend and backend.
-- Drag and drop card movement with persistent ordering.
-- Role-based permissions (`owner`, `editor`, `viewer`) enforced in UI and API.
-- CI pipeline with lint, typecheck, unit/integration tests, and Playwright e2e.
-- CI security automation (dependency audit + license allowlist gate).
-- CI performance regression gate from benchmark thresholds.
-- Demo seed script for generating rich board data for live previews.
+- [Overview](#overview)
+- [Core Capabilities](#core-capabilities)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Quick Start (Local)](#quick-start-local)
+- [Run with Docker](#run-with-docker)
+- [Observability](#observability)
+- [Testing and Quality Gates](#testing-and-quality-gates)
+- [Performance Regression Gate](#performance-regression-gate)
+- [Visual Regression Layer](#visual-regression-layer)
+- [UI Screenshots](#ui-screenshots)
+- [Engineering Docs](#engineering-docs)
+- [Useful Scripts](#useful-scripts)
 
-## Why This Project
+## Overview
 
-SyncBoard is a portfolio-grade realtime full-stack case focused on engineering reliability, not only feature completeness:
+SyncBoard is a full-stack monorepo focused on reliable realtime collaboration:
 
-- explicit consistency behavior for stale/duplicate event handling
-- reconnect recovery via `fromSequence` replay
-- security-first API/WS access model (auth + membership ACL)
-- observable runtime signals through `/health`, `/metrics`, and structured logs
+- API with typed contracts and ACL-aware authorization.
+- Web client with optimistic updates and reconnect/resync handling.
+- Production-grade observability with Prometheus + Grafana.
+- CI gates for security, quality, performance, and end-to-end verification.
 
-## Product Tour
+## Core Capabilities
 
-### Login
-![Login](./docs/screenshots/1-login.png)
-
-### Boards Overview
-![Boards Overview](./docs/screenshots/2-boards-overview.png)
-
-### Full Board View
-![Board Full](./docs/screenshots/3-board-full.png)
-
-### Search and Filter
-![Card Search](./docs/screenshots/4-card-search.png)
-
-### Realtime Sync
-![Realtime](./docs/screenshots/5-realtime.gif)
-
-### Test Quality Snapshot
-![Tests](./docs/screenshots/6-test.png)
-
-## Tech Stack
-
-### Frontend
-
-- React 19
-- TypeScript
-- Vite
-- React Router
-- TanStack Query
-- Zustand
-- React Hook Form + Zod
-- DnD Kit
-- TanStack Virtual
-- Tailwind CSS
-- Radix Slot + CVA based UI primitives
-
-### Backend
-
-- Fastify
-- WebSocket (`@fastify/websocket`)
-- TypeScript
-- Prisma ORM
-- PostgreSQL
-- Redis (presence store)
-
-### Monorepo and Tooling
-
-- pnpm workspaces
-- ESLint
-- Vitest
-- Playwright
-- GitHub Actions CI
-- Docker Compose
+- Secure auth for REST and WebSocket flows.
+- Board membership ACL checks for all sensitive operations.
+- Realtime event stream with reconnect replay (`fromSequence`).
+- Negative-path test coverage for forbidden/unauthorized scenarios.
+- Performance benchmarks with regression threshold checks.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  Web[React Web App] -->|HTTP| API[Fastify API]
-  Web -->|WebSocket| WS[Realtime Hub]
-  API --> WS
-  API --> Prisma[Prisma]
-  Prisma --> PG[(PostgreSQL)]
-  WS --> Redis[(Redis Presence)]
-  Shared[packages/shared contracts] --> Web
-  Shared --> API
-```
-
-## Realtime Reliability
-
-- Server emits monotonic per-board sequence envelopes.
-- Client applies only strictly newer envelopes and drops stale/duplicate events.
-- Reconnect path supports `board.join` with `fromSequence` and missed-event replay.
-- Server remains source of truth; client reuses snapshot invalidation for safety.
-
-## Observability
-
-- `GET /health` for liveness checks.
-- `GET /metrics` exposes Prometheus-style counters/gauges.
-- `syncboard_ws_active_connections` tracks active WS connections.
-- `syncboard_ws_reconnect_total` tracks reconnect count.
-- `syncboard_failed_mutations_total` tracks failed mutation count.
-- `syncboard_forbidden_total` tracks forbidden response count.
-- `syncboard_http_request_duration_ms` tracks HTTP latency by method/route/status class.
-- `syncboard_ws_reconnect_recovery_duration_ms` tracks reconnect replay recovery duration.
-- `x-request-id` is attached to HTTP responses for request tracing.
-- Detailed diagnostics and query cheatsheet: `docs/observability.md`
-- Local Prometheus/Grafana stack: `pnpm obs:up` (Grafana at `http://localhost:3002`)
-- Prometheus alert rules: `ops/observability/prometheus/alerts.yml`
-- Incident runbooks: `docs/runbooks/`
-
-## SLO Targets
-
-Initial service objectives are defined in:
-
-- `docs/slo.md`
-
-Current headline targets:
-
-- API availability: `>= 99.9%` (30d)
-- Board snapshot latency: `GET /boards/:id p95 < 250ms` (7d)
-- Mutation failure ratio: `< 1.0%` (7d)
-- Reconnect recovery: `p95 < 3s` (7d)
-
-## Security Model Summary
-
-- REST routes require bearer auth.
-- WS handshake requires token auth.
-- Board access is protected by membership ACL checks.
-- Write operations are blocked for `viewer` role.
-- Role header spoofing is not trusted as authority.
-- Mutation endpoints support optional `Idempotency-Key` to deduplicate safe client retries.
-- Rate limiting is enabled for auth login, mutation endpoints, and WS handshakes.
-
-## Monorepo Structure
-
 ```text
 apps/
-  api/        Fastify backend
-  web/        React frontend
+  api/        Fastify + Prisma + Redis/Postgres integrations
+  web/        React + Vite + Playwright e2e
 packages/
-  shared/     Shared Zod schemas and contracts
+  shared/     Typed contracts and shared domain primitives
+ops/
+  observability/
+    prometheus/  scrape config + alert rules
+    grafana/     provisioned datasources + dashboards
 docs/
-  adr/        Architecture Decision Records
-  performance.md
-  screenshots/
+  adr/ runbooks/ security/ testing/ deployment/ incident-response
 ```
 
-## Quick Start
+## Tech Stack
 
-### Prerequisites
+- Backend: Fastify, Prisma, PostgreSQL, Redis, Zod
+- Frontend: React 19, Vite, TanStack Query, Zustand, dnd-kit
+- Testing: Vitest, Playwright
+- Observability: Prometheus, Grafana
+- Tooling: pnpm workspaces, TypeScript, ESLint
+
+## Quick Start (Local)
+
+Prerequisites:
 
 - Node.js 20+
 - pnpm 10+
-- Docker (optional, for containerized run)
-
-### Local Development
+- Docker (for infra services)
 
 ```bash
 pnpm install
+pnpm infra:up
+pnpm --filter @syncboard/api db:generate
+pnpm --filter @syncboard/api db:push
 pnpm dev
 ```
 
-Local URLs:
+Endpoints:
 
 - Web: `http://localhost:5173`
 - API: `http://localhost:3001`
-- WebSocket: `ws://localhost:3001/ws`
+- Health: `http://localhost:3001/health`
+- Metrics: `http://localhost:3001/metrics`
 
-### Docker Development
-
-```bash
-pnpm dev:docker
-```
-
-This starts PostgreSQL, Redis, API, and Web.
-
-## Environment
-
-Core variables used by the apps:
-
-- `VITE_API_URL`
-- `VITE_WS_URL`
-- `PORT`
-- `HOST`
-- `APP_ORIGIN`
-- `PERSISTENCE_MODE`
-- `DATABASE_URL`
-- `REDIS_URL`
-
-See `.env.example` for defaults and examples.
-
-## Demo Seed Data
-
-Generate a full demo workspace with multiple users, boards, columns, and cards:
+To stop local infra:
 
 ```bash
-pnpm seed:demo
+pnpm infra:down
 ```
 
-Optional:
+## Run with Docker
+
+Standard app stack:
 
 ```bash
-DEMO_LABEL="Release Board" pnpm seed:demo
+docker compose up --build
 ```
 
-The script prints created board IDs at the end for quick navigation.
+App + observability profile:
 
-## Quality and Testing
+```bash
+docker compose --profile observability up --build -d
+```
 
-Run all quality checks:
+Default ports:
+
+- API: `3001`
+- Web: `5173`
+- PostgreSQL: `5432`
+- Redis: `6379`
+- Prometheus: `9090`
+- Grafana: `3002`
+
+## Observability
+
+Built-in signals:
+
+- `GET /health` for liveness.
+- `GET /metrics` for Prometheus exposition.
+- Structured logs with request correlation (`x-request-id` / `reqId`).
+
+Key metrics:
+
+- `syncboard_ws_active_connections`
+- `syncboard_ws_reconnect_total`
+- `syncboard_failed_mutations_total`
+- `syncboard_forbidden_total`
+- `syncboard_http_request_duration_ms`
+- `syncboard_ws_reconnect_recovery_duration_ms`
+
+Grafana dashboard is provisioned automatically:
+
+- `SyncBoard Observability`
+
+## Testing and Quality Gates
+
+Local validation flow:
 
 ```bash
 pnpm lint
@@ -225,111 +145,77 @@ pnpm --filter @syncboard/web test
 pnpm --filter @syncboard/web test:e2e
 ```
 
-CI workflow is defined in `.github/workflows/ci.yml` and includes:
+CI pipeline includes:
 
-- Security job: `pnpm security:ci` (audit + license allowlist checks)
-- Quality job: install, lint, typecheck, tests, build
-- Performance job: `pnpm performance:ci` (bench + thresholds gate)
-- E2E job: Playwright browser install and e2e execution
+- `security` (audit + license allowlist)
+- `quality` (lint/typecheck/test/build)
+- `performance` (bench + threshold gate)
+- `e2e` (browser workflows + UI state checks)
 
-## Test Strategy
+## Performance Regression Gate
 
-Coverage is layered to catch regressions at different boundaries:
-
-- unit tests for pure board/realtime/UI logic
-- API integration tests for auth, ACL, mutation flows, and WS behavior
-- e2e tests for critical user flows and cross-session realtime sync
-
-Priority negative scenarios include unauthorized access, forbidden mutation, reconnect replay behavior, and stale event rejection.
-
-## Performance Benchmark
-
-Run local REST + WebSocket benchmark scenarios:
+Run benchmark locally:
 
 ```bash
 pnpm bench:api
 ```
 
-Detailed benchmark guide:
+Run CI-like benchmark gate:
 
-- `docs/performance.md`
+```bash
+pnpm performance:ci
+```
+
+Benchmarks are designed to detect regressions in core REST and WebSocket paths.
+
+## Visual Regression Layer
+
+UI state baselines are covered in Playwright tests under `apps/web/e2e`.
+
+- Canonical state screen: `__ui-states`
+- Goal: catch unexpected UI deltas in critical interaction states.
+
+## UI Screenshots
+
+### Product UI
+
+![Login](docs/screenshots/1-login.png)
+![Boards Overview](docs/screenshots/2-boards-overview.png)
+![Board Full](docs/screenshots/3-board-full.png)
+![Card Search](docs/screenshots/4-card-search.png)
+![Realtime Demo](docs/screenshots/5-realtime.gif)
+
+### Visual Regression State Gallery
+
+![UI State Gallery](docs/screenshots/7-ui-states-gallery.png)
+
+### Observability Dashboard
+
+![Observability Dashboard](docs/screenshots/8-observability-dashboard.png)
 
 ## Engineering Docs
 
-- `docs/slo.md`
-- `docs/observability.md`
-- `docs/performance.md`
-- `docs/security.md`
-- `docs/testing.md`
-- `docs/deployment.md`
-- `docs/incident-response.md`
-- `docs/adr/README.md`
-- `docs/runbooks/`
+- Security automation: [docs/security.md](docs/security.md)
+- Observability guide: [docs/observability.md](docs/observability.md)
+- SLO definitions: [docs/slo.md](docs/slo.md)
+- Testing guide: [docs/testing.md](docs/testing.md)
+- Deployment guide: [docs/deployment.md](docs/deployment.md)
+- Incident response: [docs/incident-response.md](docs/incident-response.md)
+- Runbooks index: [docs/runbooks/README.md](docs/runbooks/README.md)
+- ADR index: [docs/adr/README.md](docs/adr/README.md)
+- Performance notes: [docs/performance.md](docs/performance.md)
 
-## Visual State Coverage
+## Useful Scripts
 
-- Open `http://localhost:5173/__ui-states` for a dedicated UI state gallery.
-- Gallery covers empty/loading/error/disconnected/reconnecting/permission states, variants, and feedback banners.
-
-## Known Trade-offs
-
-- In `postgres` mode, realtime replay stream is durable but retention-bounded (`BoardEvent` log); very long disconnects may still require full snapshot refresh.
-- In `memory` mode, replay remains process-local and bounded.
-- Presence storage supports memory and Redis modes; behavior differs by deployment mode.
-- The project prioritizes deterministic sequence-based convergence over advanced CRDT conflict resolution.
-
-## Future Improvements
-
-- Persist replay/event stream for longer offline recovery windows.
-- Add Storybook snapshots on top of the existing UI state gallery for automated visual diffs.
-- Expand observability with dashboard presets and alert examples.
-
-## Realtime Event Model
-
-Key board events:
-
-- `card.created`
-- `card.updated`
-- `card.moved`
-- `card.deleted`
-- `column.created`
-- `column.updated`
-- `presence.update`
-- `activity.update`
-
-Events include sequencing metadata, and the client ignores stale envelopes to keep board state consistent.
-
-## Scripts
-
-### Root
-
-- `pnpm dev`
-- `pnpm build`
-- `pnpm lint`
-- `pnpm typecheck`
-- `pnpm seed:demo`
-- `pnpm bench:api`
-- `pnpm bench:ci`
-- `pnpm bench:gate`
-- `pnpm performance:ci`
-- `pnpm infra:up`
-- `pnpm infra:down`
-- `pnpm obs:up`
-- `pnpm obs:down`
-- `pnpm dev:docker`
-- `pnpm security:audit`
-- `pnpm security:licenses`
-- `pnpm security:ci`
-
-### Web
-
-- `pnpm --filter @syncboard/web dev`
-- `pnpm --filter @syncboard/web test`
-- `pnpm --filter @syncboard/web test:e2e`
-
-### API
-
-- `pnpm --filter @syncboard/api dev`
-- `pnpm --filter @syncboard/api test`
-- `pnpm --filter @syncboard/api seed:demo`
-- `pnpm --filter @syncboard/api bench`
+```bash
+pnpm dev                  # run api + web in parallel
+pnpm dev:api              # api only
+pnpm dev:web              # web only
+pnpm dev:docker           # full app via docker compose
+pnpm seed:demo            # seed sample data
+pnpm security:ci          # audit + license checks
+pnpm bench:api            # local benchmark
+pnpm performance:ci       # benchmark + gate
+pnpm obs:up               # start prometheus + grafana
+pnpm obs:down             # stop prometheus + grafana
+```
