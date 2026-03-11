@@ -108,6 +108,8 @@ flowchart LR
 - `x-request-id` is attached to HTTP responses for request tracing.
 - Detailed diagnostics and query cheatsheet: `docs/observability.md`
 - Local Prometheus/Grafana stack: `pnpm obs:up` (Grafana at `http://localhost:3002`)
+- Prometheus alert rules: `ops/observability/prometheus/alerts.yml`
+- Incident runbooks: `docs/runbooks/`
 
 ## SLO Targets
 
@@ -250,6 +252,7 @@ Detailed benchmark guide:
 - `docs/observability.md`
 - `docs/performance.md`
 - `docs/adr/README.md`
+- `docs/runbooks/`
 
 ## Visual State Coverage
 

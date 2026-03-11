@@ -86,7 +86,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./ops/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/observability/prometheus:/etc/prometheus:ro
     depends_on:
       - api
 

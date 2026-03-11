@@ -74,6 +74,10 @@ Pre-provisioned dashboard:
 
 - `SyncBoard Observability` (`ops/observability/grafana/dashboards/syncboard-overview.json`)
 
+Prometheus alert rules:
+
+- `ops/observability/prometheus/alerts.yml`
+
 ## Metric Query Cheatsheet
 
 Use these expressions in Prometheus/Grafana once scraping is enabled.
@@ -135,6 +139,7 @@ syncboard_ws_active_connections
 2. Correlate with logs containing `statusCode >= 400`.
 3. Split by endpoint (auth, board mutations, card mutations).
 4. Validate auth/session state and membership ACL assumptions.
+5. Use runbook: `docs/runbooks/high-failed-mutations.md`
 
 ### Symptom: high reconnect rate
 
@@ -142,12 +147,31 @@ syncboard_ws_active_connections
 2. Check `syncboard_ws_active_connections` stability.
 3. Inspect websocket close patterns and network instability.
 4. Verify reconnect replay path (`fromSequence`) behavior.
+5. Use runbook: `docs/runbooks/high-ws-reconnect-rate.md`
 
 ### Symptom: elevated forbidden responses
 
 1. Check `rate(syncboard_forbidden_total[5m])`.
 2. Validate whether traffic comes from expected users/roles.
 3. Confirm board membership setup in seed/test flows.
+4. Use runbook: `docs/runbooks/high-forbidden-rate.md`
+
+### Symptom: API scrape target down
+
+1. Check `up{job="syncboard-api"}` in Prometheus.
+2. Validate `GET /health` and dependency health.
+3. Use runbook: `docs/runbooks/api-down.md`
+
+## Alert Rules
+
+Current rule set in `ops/observability/prometheus/alerts.yml`:
+
+- `SyncboardApiDown` (critical)
+- `SyncboardHighFailedMutationRate` (warning)
+- `SyncboardHighForbiddenRate` (warning)
+- `SyncboardHighWsReconnectRate` (warning)
+
+Each alert includes `runbook_url` pointing to local runbook docs.
 
 ## Coverage Map by Subsystem
 
@@ -166,4 +190,3 @@ syncboard_ws_active_connections
 
 - Route-level latency histograms are not exposed yet.
 - Reconnect recovery duration histogram is not exposed yet.
-- Dashboards and alert rules are introduced in the next plan step.

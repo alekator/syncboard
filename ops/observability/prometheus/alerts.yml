@@ -1,0 +1,47 @@
+groups:
+  - name: syncboard-observability
+    interval: 30s
+    rules:
+      - alert: SyncboardApiDown
+        expr: up{job="syncboard-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: syncboard-api
+        annotations:
+          summary: "SyncBoard API target is down"
+          description: "Prometheus cannot scrape syncboard-api /metrics for 2 minutes."
+          runbook_url: "docs/runbooks/api-down.md"
+
+      - alert: SyncboardHighFailedMutationRate
+        expr: rate(syncboard_failed_mutations_total[5m]) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+          service: syncboard-api
+        annotations:
+          summary: "High failed mutation rate"
+          description: "syncboard_failed_mutations_total is above 0.2 events/sec for 10 minutes."
+          runbook_url: "docs/runbooks/high-failed-mutations.md"
+
+      - alert: SyncboardHighForbiddenRate
+        expr: rate(syncboard_forbidden_total[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          service: syncboard-api
+        annotations:
+          summary: "High forbidden response rate"
+          description: "syncboard_forbidden_total is above 0.1 events/sec for 10 minutes."
+          runbook_url: "docs/runbooks/high-forbidden-rate.md"
+
+      - alert: SyncboardHighWsReconnectRate
+        expr: rate(syncboard_ws_reconnect_total[5m]) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+          service: syncboard-ws
+        annotations:
+          summary: "High websocket reconnect rate"
+          description: "syncboard_ws_reconnect_total is above 0.2 events/sec for 10 minutes."
+          runbook_url: "docs/runbooks/high-ws-reconnect-rate.md"
