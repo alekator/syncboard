@@ -131,6 +131,7 @@ Current headline targets:
 - Board access is protected by membership ACL checks.
 - Write operations are blocked for `viewer` role.
 - Role header spoofing is not trusted as authority.
+- Mutation endpoints support optional `Idempotency-Key` to deduplicate safe client retries.
 
 ## Monorepo Structure
 

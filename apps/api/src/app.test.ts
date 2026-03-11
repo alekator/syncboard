@@ -327,6 +327,84 @@ describe('buildApp', () => {
     expect(response.json()).toEqual({ message: 'Invalid board payload' })
   })
 
+  it('replays mutation response for the same idempotency key', async () => {
+    app = await buildApp({ origin: '*' })
+    const owner = await login('Owner', 'owner')
+    const idempotencyKey = 'board-create-1'
+
+    const firstCreate = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+        'idempotency-key': idempotencyKey,
+      },
+      payload: { name: 'Idempotent board' },
+    })
+
+    const secondCreate = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+        'idempotency-key': idempotencyKey,
+      },
+      payload: { name: 'Idempotent board' },
+    })
+
+    expect(firstCreate.statusCode).toBe(201)
+    expect(secondCreate.statusCode).toBe(201)
+    expect(secondCreate.headers['x-idempotent-replay']).toBe('true')
+
+    const firstPayload = firstCreate.json() as { id: string; name: string }
+    const secondPayload = secondCreate.json() as { id: string; name: string }
+    expect(secondPayload).toEqual(firstPayload)
+
+    const boardsResponse = await app.inject({
+      method: 'GET',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
+    })
+
+    expect(boardsResponse.statusCode).toBe(200)
+    const boards = (boardsResponse.json() as { boards: Array<{ id: string }> }).boards
+    expect(boards.filter((board) => board.id === firstPayload.id)).toHaveLength(1)
+  })
+
+  it('rejects idempotency key reuse with a different payload', async () => {
+    app = await buildApp({ origin: '*' })
+    const owner = await login('Owner', 'owner')
+    const idempotencyKey = 'board-create-conflict'
+
+    const firstCreate = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+        'idempotency-key': idempotencyKey,
+      },
+      payload: { name: 'First board name' },
+    })
+    expect(firstCreate.statusCode).toBe(201)
+
+    const conflictingCreate = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+        'idempotency-key': idempotencyKey,
+      },
+      payload: { name: 'Different board name' },
+    })
+
+    expect(conflictingCreate.statusCode).toBe(409)
+    expect(conflictingCreate.json()).toEqual({
+      message: 'Idempotency key reuse with different request payload is not allowed',
+    })
+  })
+
   it('forbids board mutations for viewer role', async () => {
     app = await buildApp({ origin: '*' })
     const viewer = await login('Readonly', 'viewer')

@@ -20,6 +20,8 @@ import { registerMetricsRoute } from './routes/metrics.js'
 import { registerRealtimeRoutes } from './routes/realtime.js'
 import { MetricsRegistry } from './observability/metrics.js'
 import { InMemoryRealtimeReplayStore } from './realtime/replay-store.js'
+import { registerIdempotencyHooks } from './idempotency/plugin.js'
+import { InMemoryIdempotencyStore } from './idempotency/store.js'
 import type { BoardStore } from './domain/board-store.js'
 import type { SessionStore } from './auth/session-store.js'
 import type { PresenceStore } from './realtime/presence-store.js'
@@ -38,6 +40,7 @@ type BuildAppOptions = {
 export async function buildApp(options: BuildAppOptions = {}) {
   const persistenceConfig = resolvePersistenceConfig()
   const metrics = new MetricsRegistry()
+  const idempotencyStore = new InMemoryIdempotencyStore()
 
   const app = Fastify({
     logger: true,
@@ -90,6 +93,8 @@ export async function buildApp(options: BuildAppOptions = {}) {
     origin,
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   })
+
+  registerIdempotencyHooks(app, idempotencyStore)
 
   app.addHook('onRequest', async (request, reply) => {
     reply.header('x-request-id', request.id)
