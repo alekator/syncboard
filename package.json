@@ -15,6 +15,9 @@
     "infra:down": "docker compose down",
     "obs:up": "docker compose --profile observability up -d prometheus grafana",
     "obs:down": "docker compose --profile observability stop prometheus grafana",
-    "dev:docker": "docker compose up --build"
+    "dev:docker": "docker compose up --build",
+    "security:audit": "pnpm audit --prod --audit-level high --ignore-registry-errors",
+    "security:licenses": "node ./tools/security/check-licenses.mjs",
+    "security:ci": "pnpm security:audit && pnpm security:licenses"
   }
 }

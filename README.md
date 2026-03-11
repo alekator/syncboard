@@ -11,6 +11,7 @@ Realtime collaborative Kanban workspace with typed contracts, optimistic updates
 - Drag and drop card movement with persistent ordering.
 - Role-based permissions (`owner`, `editor`, `viewer`) enforced in UI and API.
 - CI pipeline with lint, typecheck, unit/integration tests, and Playwright e2e.
+- CI security automation (dependency audit + license allowlist gate).
 - Demo seed script for generating rich board data for live previews.
 
 ## Why This Project
@@ -223,6 +224,7 @@ pnpm --filter @syncboard/web test:e2e
 
 CI workflow is defined in `.github/workflows/ci.yml` and includes:
 
+- Security job: `pnpm security:ci` (audit + license allowlist checks)
 - Quality job: install, lint, typecheck, tests, build
 - E2E job: Playwright browser install and e2e execution
 
@@ -253,6 +255,7 @@ Detailed benchmark guide:
 - `docs/slo.md`
 - `docs/observability.md`
 - `docs/performance.md`
+- `docs/security.md`
 - `docs/adr/README.md`
 - `docs/runbooks/`
 
@@ -304,6 +307,9 @@ Events include sequencing metadata, and the client ignores stale envelopes to ke
 - `pnpm obs:up`
 - `pnpm obs:down`
 - `pnpm dev:docker`
+- `pnpm security:audit`
+- `pnpm security:licenses`
+- `pnpm security:ci`
 
 ### Web
 
