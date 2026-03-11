@@ -8,6 +8,7 @@ import { entityIdSchema } from '@syncboard/shared'
 import { RealtimeHub } from '../realtime/realtime-hub.js'
 import type { SessionStore } from '../auth/session-store.js'
 import type { BoardStore } from '../domain/board-store.js'
+import type { MetricsRegistry } from '../observability/metrics.js'
 
 const CLIENT_EVENT_SCHEMA = z.discriminatedUnion('type', [
   z.object({
@@ -45,6 +46,7 @@ export async function registerRealtimeRoutes(
   realtimeHub: RealtimeHub,
   sessionStore: SessionStore,
   boardStore: BoardStore,
+  metrics: MetricsRegistry,
 ) {
   app.get('/ws', { websocket: true }, async (socket, request) => {
     const query = CLIENT_QUERY_SCHEMA.safeParse(request.query)
@@ -60,6 +62,7 @@ export async function registerRealtimeRoutes(
     }
 
     const userId = entityIdSchema.safeParse(sessionUser.id).success ? sessionUser.id : randomUUID()
+    metrics.addWsConnection(userId)
     const client = realtimeHub.registerClient(socket, userId)
 
     socket.on('message', async (raw) => {
@@ -88,6 +91,7 @@ export async function registerRealtimeRoutes(
     })
 
     socket.on('close', () => {
+      metrics.removeWsConnection()
       void realtimeHub.unregisterClient(client)
     })
   })

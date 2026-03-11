@@ -15,7 +15,9 @@ import { RedisPresenceStore } from './infrastructure/redis/redis-presence-store.
 import { registerAuthRoutes } from './routes/auth.js'
 import { registerBoardRoutes } from './routes/boards.js'
 import { registerHealthRoute } from './routes/health.js'
+import { registerMetricsRoute } from './routes/metrics.js'
 import { registerRealtimeRoutes } from './routes/realtime.js'
+import { MetricsRegistry } from './observability/metrics.js'
 import type { BoardStore } from './domain/board-store.js'
 import type { SessionStore } from './auth/session-store.js'
 import type { PresenceStore } from './realtime/presence-store.js'
@@ -32,6 +34,7 @@ type BuildAppOptions = {
 
 export async function buildApp(options: BuildAppOptions = {}) {
   const persistenceConfig = resolvePersistenceConfig()
+  const metrics = new MetricsRegistry()
 
   const app = Fastify({
     logger: true,
@@ -82,10 +85,27 @@ export async function buildApp(options: BuildAppOptions = {}) {
     origin,
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   })
+
+  app.addHook('onRequest', async (request, reply) => {
+    reply.header('x-request-id', request.id)
+  })
+
+  app.addHook('onResponse', async (request, reply) => {
+    if (reply.statusCode === 403) {
+      metrics.incrementCounter('forbiddenTotal')
+    }
+
+    const isMutationMethod = request.method === 'POST' || request.method === 'PATCH' || request.method === 'DELETE'
+    if (isMutationMethod && reply.statusCode >= 400) {
+      metrics.incrementCounter('failedMutationsTotal')
+    }
+  })
+
   await app.register(websocket)
   await registerHealthRoute(app)
+  await registerMetricsRoute(app, metrics)
   await registerAuthRoutes(app, sessionStore)
-  await registerRealtimeRoutes(app, realtimeHub, sessionStore, boardStore)
+  await registerRealtimeRoutes(app, realtimeHub, sessionStore, boardStore, metrics)
   await registerBoardRoutes(app, boardStore, realtimeHub, sessionStore)
 
   return app

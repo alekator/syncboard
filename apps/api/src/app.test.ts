@@ -41,6 +41,19 @@ async function waitForRealtimeMessage(
   })
 }
 
+function metricValue(metricsText: string, name: string) {
+  const line = metricsText
+    .split('\n')
+    .find((entry) => entry.startsWith(`${name} `))
+
+  if (!line) {
+    return null
+  }
+
+  const value = Number(line.split(' ')[1])
+  return Number.isFinite(value) ? value : null
+}
+
 describe('buildApp', () => {
   let app: Awaited<ReturnType<typeof buildApp>> | undefined
 
@@ -72,6 +85,66 @@ describe('buildApp', () => {
 
     expect(response.statusCode).toBe(200)
     expect(response.json()).toEqual({ status: 'ok' })
+    expect(typeof response.headers['x-request-id']).toBe('string')
+  })
+
+  it('returns observability metrics for /metrics', async () => {
+    app = await buildApp({ origin: '*' })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/metrics',
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.headers['content-type']).toContain('text/plain')
+    expect(response.body).toContain('syncboard_ws_active_connections')
+    expect(response.body).toContain('syncboard_ws_reconnect_total')
+    expect(response.body).toContain('syncboard_failed_mutations_total')
+    expect(response.body).toContain('syncboard_forbidden_total')
+  })
+
+  it('tracks forbidden and failed mutation counters', async () => {
+    app = await buildApp({ origin: '*' })
+    const owner = await login('Owner', 'owner')
+    const outsider = await login('Outsider', 'editor')
+
+    const board = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
+      payload: { name: 'Secured board' },
+    })
+    const boardPayload = board.json()
+
+    const forbiddenMutation = await app.inject({
+      method: 'PATCH',
+      url: `/boards/${boardPayload.id}`,
+      headers: {
+        authorization: `Bearer ${outsider.token}`,
+      },
+      payload: { name: 'Hacked board' },
+    })
+    expect(forbiddenMutation.statusCode).toBe(403)
+
+    const invalidMutation = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
+      payload: { name: '' },
+    })
+    expect(invalidMutation.statusCode).toBe(400)
+
+    const metrics = await app.inject({
+      method: 'GET',
+      url: '/metrics',
+    })
+    expect(metricValue(metrics.body, 'syncboard_forbidden_total')).toBeGreaterThanOrEqual(1)
+    expect(metricValue(metrics.body, 'syncboard_failed_mutations_total')).toBeGreaterThanOrEqual(2)
   })
 
   it('allows CORS preflight for PATCH and DELETE methods', async () => {
@@ -465,5 +538,38 @@ describe('buildApp', () => {
 
     socket.close()
     await once(socket, 'close')
+  })
+
+  it('tracks websocket active connections and reconnect counter', async () => {
+    app = await buildApp({ origin: '*' })
+    await app.listen({ host: '127.0.0.1', port: 0 })
+
+    const owner = await login('Owner', 'owner')
+    const address = app.server.address() as AddressInfo
+
+    const firstSocket = new WebSocket(`ws://127.0.0.1:${address.port}/ws?token=${owner.token}`)
+    await once(firstSocket, 'open')
+
+    const whileConnectedMetrics = await app.inject({ method: 'GET', url: '/metrics' })
+    expect(metricValue(whileConnectedMetrics.body, 'syncboard_ws_active_connections')).toBe(1)
+    expect(metricValue(whileConnectedMetrics.body, 'syncboard_ws_reconnect_total')).toBe(0)
+
+    firstSocket.close()
+    await once(firstSocket, 'close')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    const secondSocket = new WebSocket(`ws://127.0.0.1:${address.port}/ws?token=${owner.token}`)
+    await once(secondSocket, 'open')
+
+    const reconnectMetrics = await app.inject({ method: 'GET', url: '/metrics' })
+    expect(metricValue(reconnectMetrics.body, 'syncboard_ws_active_connections')).toBe(1)
+    expect(metricValue(reconnectMetrics.body, 'syncboard_ws_reconnect_total')).toBeGreaterThanOrEqual(1)
+
+    secondSocket.close()
+    await once(secondSocket, 'close')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    const finalMetrics = await app.inject({ method: 'GET', url: '/metrics' })
+    expect(metricValue(finalMetrics.body, 'syncboard_ws_active_connections')).toBe(0)
   })
 })
