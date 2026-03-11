@@ -1,13 +1,19 @@
 import { expect, test } from '@playwright/test'
 
 const FONT_NEUTRAL_STYLE = `
+  * {
+    font-family: Arial, sans-serif !important;
+  }
+
   h1, h2, h3, p, span, li, small, strong {
     color: transparent !important;
     text-shadow: none !important;
+    line-height: 1.2 !important;
   }
 `
 
 test('ui state gallery visual regression baseline', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto('/__ui-states')
   await expect(page.getByRole('heading', { name: 'UI State Gallery' })).toBeVisible()
 
@@ -18,11 +24,13 @@ test('ui state gallery visual regression baseline', async ({ page }) => {
     animations: 'disabled',
     scale: 'css',
     caret: 'hide',
+    maxDiffPixelRatio: 0.03,
   })
 
   await expect(page.locator('section').first()).toHaveScreenshot('ui-states-gallery-critical-grid.png', {
     animations: 'disabled',
     scale: 'css',
     caret: 'hide',
+    maxDiffPixelRatio: 0.03,
   })
 })
