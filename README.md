@@ -107,6 +107,7 @@ flowchart LR
 - `syncboard_forbidden_total` tracks forbidden response count.
 - `x-request-id` is attached to HTTP responses for request tracing.
 - Detailed diagnostics and query cheatsheet: `docs/observability.md`
+- Local Prometheus/Grafana stack: `pnpm obs:up` (Grafana at `http://localhost:3002`)
 
 ## SLO Targets
 
@@ -294,6 +295,8 @@ Events include sequencing metadata, and the client ignores stale envelopes to ke
 - `pnpm bench:api`
 - `pnpm infra:up`
 - `pnpm infra:down`
+- `pnpm obs:up`
+- `pnpm obs:down`
 - `pnpm dev:docker`
 
 ### Web

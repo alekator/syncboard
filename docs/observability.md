@@ -51,6 +51,29 @@ curl -i http://localhost:3001/health
 
 Verify `x-request-id` is present in response headers.
 
+## Local Prometheus + Grafana
+
+Start stack:
+
+```bash
+pnpm obs:up
+```
+
+Stop stack:
+
+```bash
+pnpm obs:down
+```
+
+Default local URLs:
+
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3002` (admin/admin)
+
+Pre-provisioned dashboard:
+
+- `SyncBoard Observability` (`ops/observability/grafana/dashboards/syncboard-overview.json`)
+
 ## Metric Query Cheatsheet
 
 Use these expressions in Prometheus/Grafana once scraping is enabled.

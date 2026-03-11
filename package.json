@@ -13,6 +13,8 @@
     "seed:demo": "pnpm --filter @syncboard/api seed:demo",
     "infra:up": "docker compose up -d postgres redis",
     "infra:down": "docker compose down",
+    "obs:up": "docker compose --profile observability up -d prometheus grafana",
+    "obs:down": "docker compose --profile observability stop prometheus grafana",
     "dev:docker": "docker compose up --build"
   }
 }
