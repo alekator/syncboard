@@ -572,4 +572,112 @@ describe('buildApp', () => {
     const finalMetrics = await app.inject({ method: 'GET', url: '/metrics' })
     expect(metricValue(finalMetrics.body, 'syncboard_ws_active_connections')).toBe(0)
   })
+
+  it('replays missed board events on reconnect with fromSequence', async () => {
+    app = await buildApp({ origin: '*' })
+    await app.listen({ host: '127.0.0.1', port: 0 })
+
+    const owner = await login('Owner', 'owner')
+    const createBoard = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
+      payload: { name: 'Replay board' },
+    })
+    const board = createBoard.json()
+
+    const address = app.server.address() as AddressInfo
+
+    const socketA = new WebSocket(`ws://127.0.0.1:${address.port}/ws?token=${owner.token}`)
+    await once(socketA, 'open')
+    socketA.send(JSON.stringify({ type: 'board.join', boardId: board.id }))
+
+    await waitForRealtimeMessage(
+      socketA,
+      (payload) =>
+        typeof payload === 'object' &&
+        payload !== null &&
+        'event' in payload &&
+        typeof payload.event === 'object' &&
+        payload.event !== null &&
+        'type' in payload.event &&
+        payload.event.type === 'presence.update',
+    )
+
+    const firstColumnEventPromise = waitForRealtimeMessage(
+      socketA,
+      (payload) =>
+        typeof payload === 'object' &&
+        payload !== null &&
+        'event' in payload &&
+        typeof payload.event === 'object' &&
+        payload.event !== null &&
+        'type' in payload.event &&
+        payload.event.type === 'column.created' &&
+        'payload' in payload.event &&
+        typeof payload.event.payload === 'object' &&
+        payload.event.payload !== null &&
+        'title' in payload.event.payload &&
+        payload.event.payload.title === 'First',
+    )
+
+    await app.inject({
+      method: 'POST',
+      url: `/boards/${board.id}/columns`,
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
+      payload: { title: 'First' },
+    })
+    const firstColumnEvent = (await firstColumnEventPromise) as { sequence: number }
+
+    socketA.close()
+    await once(socketA, 'close')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    await app.inject({
+      method: 'POST',
+      url: `/boards/${board.id}/columns`,
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
+      payload: { title: 'Second' },
+    })
+
+    const socketB = new WebSocket(`ws://127.0.0.1:${address.port}/ws?token=${owner.token}`)
+    await once(socketB, 'open')
+    socketB.send(
+      JSON.stringify({
+        type: 'board.join',
+        boardId: board.id,
+        fromSequence: firstColumnEvent.sequence,
+      }),
+    )
+
+    const replayedEvent = (await waitForRealtimeMessage(
+      socketB,
+      (payload) =>
+        typeof payload === 'object' &&
+        payload !== null &&
+        'event' in payload &&
+        typeof payload.event === 'object' &&
+        payload.event !== null &&
+        'type' in payload.event &&
+        payload.event.type === 'column.created' &&
+        'payload' in payload.event &&
+        typeof payload.event.payload === 'object' &&
+        payload.event.payload !== null &&
+        'title' in payload.event.payload &&
+        payload.event.payload.title === 'Second',
+    )) as {
+      sequence: number
+    }
+
+    expect(replayedEvent.sequence).toBeGreaterThan(firstColumnEvent.sequence)
+
+    socketB.close()
+    await once(socketB, 'close')
+  })
 })

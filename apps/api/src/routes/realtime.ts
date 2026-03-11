@@ -14,6 +14,7 @@ const CLIENT_EVENT_SCHEMA = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('board.join'),
     boardId: entityIdSchema,
+    fromSequence: z.number().int().nonnegative().optional(),
   }),
   z.object({
     type: z.literal('board.leave'),
@@ -78,7 +79,7 @@ export async function registerRealtimeRoutes(
           return
         }
 
-        await realtimeHub.joinBoard(client, parsed.data.boardId)
+        await realtimeHub.joinBoard(client, parsed.data.boardId, parsed.data.fromSequence)
       }
 
       if (parsed.data.type === 'board.leave') {

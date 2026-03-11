@@ -81,7 +81,10 @@ export const realtimeEventPayloadSchema = z.union([
   }),
   z.object({
     type: z.literal('board.join'),
-    payload: z.object({ boardId: entityIdSchema }),
+    payload: z.object({
+      boardId: entityIdSchema,
+      fromSequence: z.number().int().nonnegative().optional(),
+    }),
   }),
   z.object({
     type: z.literal('board.leave'),

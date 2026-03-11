@@ -8,10 +8,13 @@ type RealtimeClient = {
   boardIds: Set<string>
 }
 
+const MAX_REPLAY_EVENTS_PER_BOARD = 500
+
 export class RealtimeHub {
   private readonly boardClients = new Map<string, Set<RealtimeClient>>()
   private readonly sequenceByBoard = new Map<string, number>()
   private readonly versionByBoard = new Map<string, number>()
+  private readonly replayByBoard = new Map<string, RealtimeEventEnvelope[]>()
 
   constructor(private readonly presenceStore: PresenceStore = new InMemoryPresenceStore()) {}
 
@@ -29,7 +32,7 @@ export class RealtimeHub {
     }
   }
 
-  async joinBoard(client: RealtimeClient, boardId: string) {
+  async joinBoard(client: RealtimeClient, boardId: string, fromSequence?: number) {
     let clients = this.boardClients.get(boardId)
     if (!clients) {
       clients = new Set<RealtimeClient>()
@@ -39,6 +42,7 @@ export class RealtimeHub {
     clients.add(client)
     client.boardIds.add(boardId)
     await this.presenceStore.markOnline(boardId, client.userId)
+    this.replayMissedEvents(client, boardId, fromSequence)
 
     this.publishBoardEvent({
       boardId,
@@ -119,7 +123,42 @@ export class RealtimeHub {
       event: input.event,
     })
 
+    this.appendToReplayLog(input.boardId, envelope)
     this.broadcast(input.boardId, envelope)
+  }
+
+  private appendToReplayLog(boardId: string, envelope: RealtimeEventEnvelope) {
+    const events = this.replayByBoard.get(boardId) ?? []
+    events.push(envelope)
+    if (events.length > MAX_REPLAY_EVENTS_PER_BOARD) {
+      events.splice(0, events.length - MAX_REPLAY_EVENTS_PER_BOARD)
+    }
+    this.replayByBoard.set(boardId, events)
+  }
+
+  private replayMissedEvents(client: RealtimeClient, boardId: string, fromSequence?: number) {
+    if (fromSequence === undefined) {
+      return
+    }
+
+    const events = this.replayByBoard.get(boardId)
+    if (!events || events.length === 0) {
+      return
+    }
+
+    for (const envelope of events) {
+      if (envelope.sequence > fromSequence) {
+        this.sendToClient(client, envelope)
+      }
+    }
+  }
+
+  private sendToClient(client: RealtimeClient, envelope: RealtimeEventEnvelope) {
+    if (client.socket.readyState !== 1) {
+      return
+    }
+
+    client.socket.send(JSON.stringify(envelope))
   }
 
   private broadcast(boardId: string, envelope: RealtimeEventEnvelope) {
@@ -128,12 +167,8 @@ export class RealtimeHub {
       return
     }
 
-    const message = JSON.stringify(envelope)
-
     for (const client of clients) {
-      if (client.socket.readyState === 1) {
-        client.socket.send(message)
-      }
+      this.sendToClient(client, envelope)
     }
   }
 }

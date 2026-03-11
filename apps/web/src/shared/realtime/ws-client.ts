@@ -33,6 +33,7 @@ export class RealtimeClient {
   private reconnectTimer: number | null = null
   private reconnectAttempt = 0
   private isStopped = false
+  private lastSequence = 0
 
   constructor(options: RealtimeClientOptions) {
     this.boardId = options.boardId
@@ -64,6 +65,7 @@ export class RealtimeClient {
         const payload = JSON.parse(String(message.data))
         const parsed = realtimeEventEnvelopeSchema.safeParse(payload)
         if (parsed.success) {
+          this.lastSequence = Math.max(this.lastSequence, parsed.data.sequence)
           this.onEvent(parsed.data)
         }
       } catch {
@@ -102,6 +104,7 @@ export class RealtimeClient {
     this.send({
       type: 'board.join',
       boardId: this.boardId,
+      fromSequence: this.lastSequence > 0 ? this.lastSequence : undefined,
     })
   }
 

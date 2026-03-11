@@ -7,6 +7,7 @@ import { useSessionStore } from '@/features/auth/model/session-store'
 import { applyActivityEvent } from '@/features/board/realtime/activity'
 import { applyRealtimeEventToSnapshot } from '@/features/board/realtime/apply-realtime-event'
 import { applyPresenceEvent } from '@/features/board/realtime/presence'
+import { nextRealtimeSequence, shouldApplyRealtimeSequence } from '@/features/board/realtime/sequence-gate'
 import { RealtimeClient } from '@/shared/realtime/ws-client'
 
 type RealtimeStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
@@ -41,11 +42,11 @@ export function useBoardRealtimeSync(boardId: string | undefined) {
           return
         }
 
-        if (envelope.sequence <= latestSequenceRef.current) {
+        if (!shouldApplyRealtimeSequence(latestSequenceRef.current, envelope.sequence)) {
           return
         }
 
-        latestSequenceRef.current = envelope.sequence
+        latestSequenceRef.current = nextRealtimeSequence(latestSequenceRef.current, envelope.sequence)
         setOnlineUserIds((previous) => applyPresenceEvent(previous, envelope))
         setDraggingByUser((previous) => applyActivityEvent(previous, envelope))
 
