@@ -1,6 +1,5 @@
 import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
-import { PrismaClient } from '@prisma/client'
 import Fastify from 'fastify'
 import { z } from 'zod'
 
@@ -32,8 +31,16 @@ import type { BoardStore } from './domain/board-store.js'
 import type { SessionStore } from './auth/session-store.js'
 import type { PresenceStore } from './realtime/presence-store.js'
 import type { RealtimeReplayStore } from './realtime/replay-store.js'
+import type { PrismaClient as PrismaClientType } from '@prisma/client'
 
 const APP_ORIGIN_SCHEMA = z.string().min(1).default('*')
+
+type PrismaClientModuleLike = {
+  PrismaClient?: new () => PrismaClientType
+  default?: {
+    PrismaClient?: new () => PrismaClientType
+  }
+}
 
 type BuildAppOptions = {
   origin?: string
@@ -84,7 +91,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
   ) {
     process.env.DATABASE_URL = persistenceConfig.databaseUrl
 
-    const prisma = new PrismaClient()
+    const prismaClientModule = (await import('@prisma/client')) as PrismaClientModuleLike
+    const PrismaClientCtor = prismaClientModule.PrismaClient ?? prismaClientModule.default?.PrismaClient
+
+    if (!PrismaClientCtor) {
+      throw new Error('Unable to resolve PrismaClient export from @prisma/client')
+    }
+
+    const prisma = new PrismaClientCtor()
     await prisma.$connect()
 
     app.addHook('onClose', async () => {
