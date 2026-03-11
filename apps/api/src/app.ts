@@ -9,6 +9,7 @@ import { InMemorySessionStore } from './auth/session-store.js'
 import { resolvePersistenceConfig } from './config/persistence.js'
 import { RealtimeHub } from './realtime/realtime-hub.js'
 import { PrismaBoardStore } from './infrastructure/prisma/prisma-board-store.js'
+import { PrismaRealtimeReplayStore } from './infrastructure/prisma/prisma-realtime-replay-store.js'
 import { PrismaSessionStore } from './infrastructure/prisma/prisma-session-store.js'
 import { createRedisClient } from './infrastructure/redis/redis-client.js'
 import { RedisPresenceStore } from './infrastructure/redis/redis-presence-store.js'
@@ -18,9 +19,11 @@ import { registerHealthRoute } from './routes/health.js'
 import { registerMetricsRoute } from './routes/metrics.js'
 import { registerRealtimeRoutes } from './routes/realtime.js'
 import { MetricsRegistry } from './observability/metrics.js'
+import { InMemoryRealtimeReplayStore } from './realtime/replay-store.js'
 import type { BoardStore } from './domain/board-store.js'
 import type { SessionStore } from './auth/session-store.js'
 import type { PresenceStore } from './realtime/presence-store.js'
+import type { RealtimeReplayStore } from './realtime/replay-store.js'
 
 const APP_ORIGIN_SCHEMA = z.string().min(1).default('*')
 
@@ -44,6 +47,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   let boardStore = options.boardStore ?? new InMemoryBoardStore()
   let presenceStore = options.presenceStore
   let sessionStore = options.sessionStore ?? new InMemorySessionStore()
+  let replayStore: RealtimeReplayStore = new InMemoryRealtimeReplayStore()
 
   if (!presenceStore && persistenceConfig.redisUrl) {
     const redis = createRedisClient(persistenceConfig.redisUrl)
@@ -55,8 +59,6 @@ export async function buildApp(options: BuildAppOptions = {}) {
 
     app.log.info('Redis presence store enabled')
   }
-
-  const realtimeHub = options.realtimeHub ?? new RealtimeHub(presenceStore)
 
   app.log.info({ mode: persistenceConfig.mode }, 'Persistence mode resolved')
   if (
@@ -76,10 +78,13 @@ export async function buildApp(options: BuildAppOptions = {}) {
 
     boardStore = new PrismaBoardStore(prisma)
     sessionStore = new PrismaSessionStore(prisma)
+    replayStore = new PrismaRealtimeReplayStore(prisma)
     app.log.info('Postgres repositories enabled')
   } else if (persistenceConfig.mode === 'postgres' && !persistenceConfig.databaseUrl) {
     app.log.warn('Postgres mode requested without DATABASE_URL; falling back to memory repositories.')
   }
+
+  const realtimeHub = options.realtimeHub ?? new RealtimeHub(presenceStore, replayStore)
 
   await app.register(cors, {
     origin,

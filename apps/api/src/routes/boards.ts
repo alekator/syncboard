@@ -221,7 +221,7 @@ export async function registerBoardRoutes(
       return reply.status(404).send({ message: 'Board not found' })
     }
 
-    realtimeHub.publishBoardEvent({
+    await realtimeHub.publishBoardEvent({
       boardId: column.boardId,
       entityId: column.id,
       event: {
@@ -267,7 +267,7 @@ export async function registerBoardRoutes(
       return reply.status(404).send({ message: 'Column not found' })
     }
 
-    realtimeHub.publishBoardEvent({
+    await realtimeHub.publishBoardEvent({
       boardId: updatedColumn.boardId,
       entityId: updatedColumn.id,
       event: {
@@ -313,7 +313,7 @@ export async function registerBoardRoutes(
       return reply.status(404).send({ message: 'Column not found' })
     }
 
-    realtimeHub.publishBoardEvent({
+    await realtimeHub.publishBoardEvent({
       boardId: card.boardId,
       entityId: card.id,
       event: {
@@ -361,7 +361,7 @@ export async function registerBoardRoutes(
 
     const isMoveEvent = body.data.columnId !== undefined || body.data.position !== undefined
     if (isMoveEvent) {
-      realtimeHub.publishBoardEvent({
+      await realtimeHub.publishBoardEvent({
         boardId: card.boardId,
         entityId: card.id,
         event: {
@@ -376,7 +376,7 @@ export async function registerBoardRoutes(
         },
       })
     } else {
-      realtimeHub.publishBoardEvent({
+      await realtimeHub.publishBoardEvent({
         boardId: card.boardId,
         entityId: card.id,
         event: {
@@ -418,7 +418,7 @@ export async function registerBoardRoutes(
       return reply.status(404).send({ message: 'Card not found' })
     }
 
-    realtimeHub.publishBoardEvent({
+    await realtimeHub.publishBoardEvent({
       boardId: card.boardId,
       entityId: card.id,
       event: {

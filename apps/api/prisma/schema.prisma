@@ -36,6 +36,7 @@ model Board {
   columns   BoardColumn[]
   cards     BoardCard[]
   members   BoardMember[]
+  events    BoardEvent[]
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 }
@@ -80,4 +81,19 @@ model BoardCard {
 
   @@index([columnId, position])
   @@index([boardId])
+}
+
+model BoardEvent {
+  id        String   @id @default(uuid())
+  boardId   String
+  entityId  String?
+  sequence  Int
+  version   Int
+  timestamp DateTime
+  event     Json
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([boardId, sequence])
+  @@index([boardId, sequence])
 }

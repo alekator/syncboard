@@ -261,7 +261,8 @@ Detailed benchmark guide:
 
 ## Known Trade-offs
 
-- Realtime replay buffer is in-memory and bounded; long disconnects may require full snapshot refresh.
+- In `postgres` mode, realtime replay stream is durable but retention-bounded (`BoardEvent` log); very long disconnects may still require full snapshot refresh.
+- In `memory` mode, replay remains process-local and bounded.
 - Presence storage supports memory and Redis modes; behavior differs by deployment mode.
 - The project prioritizes deterministic sequence-based convergence over advanced CRDT conflict resolution.
 

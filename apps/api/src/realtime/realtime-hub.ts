@@ -1,6 +1,7 @@
 import type WebSocket from 'ws'
-import { realtimeEventEnvelopeSchema, type RealtimeEventEnvelope } from '@syncboard/shared'
+import type { RealtimeEventEnvelope } from '@syncboard/shared'
 import { InMemoryPresenceStore, type PresenceStore } from './presence-store.js'
+import { InMemoryRealtimeReplayStore, type RealtimeReplayStore } from './replay-store.js'
 
 type RealtimeClient = {
   socket: WebSocket
@@ -8,15 +9,13 @@ type RealtimeClient = {
   boardIds: Set<string>
 }
 
-const MAX_REPLAY_EVENTS_PER_BOARD = 500
-
 export class RealtimeHub {
   private readonly boardClients = new Map<string, Set<RealtimeClient>>()
-  private readonly sequenceByBoard = new Map<string, number>()
-  private readonly versionByBoard = new Map<string, number>()
-  private readonly replayByBoard = new Map<string, RealtimeEventEnvelope[]>()
 
-  constructor(private readonly presenceStore: PresenceStore = new InMemoryPresenceStore()) {}
+  constructor(
+    private readonly presenceStore: PresenceStore = new InMemoryPresenceStore(),
+    private readonly replayStore: RealtimeReplayStore = new InMemoryRealtimeReplayStore(),
+  ) {}
 
   registerClient(socket: WebSocket, userId: string) {
     return {
@@ -42,9 +41,9 @@ export class RealtimeHub {
     clients.add(client)
     client.boardIds.add(boardId)
     await this.presenceStore.markOnline(boardId, client.userId)
-    this.replayMissedEvents(client, boardId, fromSequence)
+    await this.replayMissedEvents(client, boardId, fromSequence)
 
-    this.publishBoardEvent({
+    await this.publishBoardEvent({
       boardId,
       event: {
         type: 'presence.update',
@@ -71,7 +70,7 @@ export class RealtimeHub {
     }
     await this.presenceStore.markOffline(boardId, client.userId)
 
-    this.publishBoardEvent({
+    await this.publishBoardEvent({
       boardId,
       event: {
         type: 'presence.update',
@@ -84,13 +83,13 @@ export class RealtimeHub {
     })
   }
 
-  publishActivity(client: RealtimeClient, boardId: string, dragging: boolean) {
+  async publishActivity(client: RealtimeClient, boardId: string, dragging: boolean) {
     const clients = this.boardClients.get(boardId)
     if (!clients || !clients.has(client)) {
       return
     }
 
-    this.publishBoardEvent({
+    await this.publishBoardEvent({
       boardId,
       event: {
         type: 'activity.update',
@@ -103,53 +102,24 @@ export class RealtimeHub {
     })
   }
 
-  publishBoardEvent(input: {
+  async publishBoardEvent(input: {
     boardId: string
     entityId?: string
     event: RealtimeEventEnvelope['event']
   }) {
-    const sequence = (this.sequenceByBoard.get(input.boardId) ?? 0) + 1
-    const version = (this.versionByBoard.get(input.boardId) ?? 0) + 1
-
-    this.sequenceByBoard.set(input.boardId, sequence)
-    this.versionByBoard.set(input.boardId, version)
-
-    const envelope = realtimeEventEnvelopeSchema.parse({
-      boardId: input.boardId,
-      entityId: input.entityId,
-      sequence,
-      version,
-      timestamp: new Date().toISOString(),
-      event: input.event,
-    })
-
-    this.appendToReplayLog(input.boardId, envelope)
+    const envelope = await this.replayStore.append(input)
     this.broadcast(input.boardId, envelope)
   }
 
-  private appendToReplayLog(boardId: string, envelope: RealtimeEventEnvelope) {
-    const events = this.replayByBoard.get(boardId) ?? []
-    events.push(envelope)
-    if (events.length > MAX_REPLAY_EVENTS_PER_BOARD) {
-      events.splice(0, events.length - MAX_REPLAY_EVENTS_PER_BOARD)
-    }
-    this.replayByBoard.set(boardId, events)
-  }
-
-  private replayMissedEvents(client: RealtimeClient, boardId: string, fromSequence?: number) {
+  private async replayMissedEvents(client: RealtimeClient, boardId: string, fromSequence?: number) {
     if (fromSequence === undefined) {
       return
     }
 
-    const events = this.replayByBoard.get(boardId)
-    if (!events || events.length === 0) {
-      return
-    }
+    const events = await this.replayStore.getSince(boardId, fromSequence)
 
     for (const envelope of events) {
-      if (envelope.sequence > fromSequence) {
-        this.sendToClient(client, envelope)
-      }
+      this.sendToClient(client, envelope)
     }
   }
 

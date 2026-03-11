@@ -21,7 +21,9 @@ Client rules:
 Server rules:
 
 - keep per-board sequence progression
-- replay missed events from in-memory replay log based on `fromSequence`
+- replay missed events from replay log based on `fromSequence`
+- in `postgres` mode, store replay envelopes durably in `BoardEvent`
+- in `memory` mode, keep replay log process-local
 
 ## Alternatives Considered
 
@@ -36,7 +38,7 @@ Server rules:
   - deterministic stale-event rejection
   - explicit replay path after brief disconnects
 - Negative:
-  - replay buffer retention is bounded (in-memory)
+  - replay retention is bounded (durable in `postgres`, process-local in `memory`)
   - long disconnects still require full snapshot refresh
 
 ## Trade-offs

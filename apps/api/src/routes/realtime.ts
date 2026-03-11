@@ -87,7 +87,7 @@ export async function registerRealtimeRoutes(
       }
 
       if (parsed.data.type === 'activity.update') {
-        realtimeHub.publishActivity(client, parsed.data.boardId, parsed.data.dragging)
+        await realtimeHub.publishActivity(client, parsed.data.boardId, parsed.data.dragging)
       }
     })
 
