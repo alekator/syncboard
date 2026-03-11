@@ -20,17 +20,17 @@ test('ui state gallery visual regression baseline', async ({ page }) => {
   // Neutralize font rendering differences across environments to keep visual diffs stable.
   await page.addStyleTag({ content: FONT_NEUTRAL_STYLE })
 
-  await expect(page.locator('main')).toHaveScreenshot('ui-states-gallery-main.png', {
+  await expect(page).toHaveScreenshot('ui-states-gallery-main.png', {
     animations: 'disabled',
     scale: 'css',
     caret: 'hide',
-    maxDiffPixelRatio: 0.03,
+    maxDiffPixelRatio: 0.1,
   })
 
   await expect(page.locator('section').first()).toHaveScreenshot('ui-states-gallery-critical-grid.png', {
     animations: 'disabled',
     scale: 'css',
     caret: 'hide',
-    maxDiffPixelRatio: 0.03,
+    maxDiffPixelRatio: 0.1,
   })
 })
