@@ -1,0 +1,21 @@
+{
+  "rest": {
+    "getBoardP95Ms": 250,
+    "createCardP95Ms": 350,
+    "moveCardP95Ms": 350
+  },
+  "ws": {
+    "joinP95MsByClients": {
+      "10": 600,
+      "20": 900
+    },
+    "broadcastTotalMsByClients": {
+      "10": 350,
+      "20": 550
+    },
+    "reconnectTotalMsByClients": {
+      "10": 1200,
+      "20": 2000
+    }
+  }
+}

@@ -1,5 +1,8 @@
+import { writeFile } from 'node:fs/promises'
 import { performance } from 'node:perf_hooks'
 import WebSocket from 'ws'
+
+import { buildApp } from '../app.js'
 
 type BenchSession = {
   token: string
@@ -25,14 +28,45 @@ type Stats = {
   max: number
 }
 
-const API_URL = process.env.BENCH_API_URL ?? 'http://localhost:3001'
-const WS_URL = process.env.BENCH_WS_URL ?? 'ws://localhost:3001/ws'
+type RestBenchReport = {
+  getBoardMs: Stats
+  createCardMs: Stats
+  moveCardMs: Stats
+}
+
+type WsScenarioReport = {
+  clients: number
+  joinMs: Stats
+  broadcastTotalMs: number
+  reconnectTotalMs: number
+}
+
+type BenchReport = {
+  generatedAt: string
+  config: {
+    apiUrl: string
+    wsUrl: string
+    restIterations: number
+    restConcurrency: number
+    wsClientSet: number[]
+  }
+  rest: RestBenchReport
+  ws: WsScenarioReport[]
+}
+
+const BOOT_API = process.env.BENCH_BOOT_API === '1'
+const BOOT_PORT = Number(process.env.BENCH_BOOT_PORT ?? 3901)
+const BENCH_OUTPUT_FILE = process.env.BENCH_OUTPUT_FILE
+
 const REST_ITERATIONS = Number(process.env.BENCH_REST_ITERATIONS ?? 40)
 const REST_CONCURRENCY = Number(process.env.BENCH_REST_CONCURRENCY ?? 8)
 const WS_CLIENT_SET = (process.env.BENCH_WS_CLIENTS ?? '20,50,100')
   .split(',')
   .map((value) => Number(value.trim()))
   .filter((value) => Number.isFinite(value) && value > 0)
+
+let apiUrl = process.env.BENCH_API_URL ?? 'http://localhost:3001'
+let wsUrl = process.env.BENCH_WS_URL ?? 'ws://localhost:3001/ws'
 
 function percentile(sortedValues: number[], p: number) {
   if (sortedValues.length === 0) {
@@ -65,10 +99,11 @@ function printStats(label: string, values: number[]) {
   console.log(
     `${label.padEnd(32)} min=${formatMs(snapshot.min)} avg=${formatMs(snapshot.avg)} p50=${formatMs(snapshot.p50)} p95=${formatMs(snapshot.p95)} max=${formatMs(snapshot.max)}`,
   )
+  return snapshot
 }
 
 async function requestJson<T>(path: string, init?: RequestInit & { token?: string }): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${apiUrl}${path}`, {
     ...init,
     headers: {
       ...(init?.body !== undefined ? { 'content-type': 'application/json' } : {}),
@@ -145,7 +180,7 @@ async function runWithConcurrency<T>(total: number, concurrency: number, task: (
 }
 
 async function connectWs(token: string) {
-  const socket = new WebSocket(`${WS_URL}?token=${encodeURIComponent(token)}`)
+  const socket = new WebSocket(`${wsUrl}?token=${encodeURIComponent(token)}`)
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('WebSocket open timeout')), 10_000)
     socket.once('open', () => {
@@ -185,7 +220,7 @@ async function waitForMessage<T>(socket: WebSocket, predicate: (payload: unknown
   })
 }
 
-async function runRestBench(ownerToken: string, boardId: string, columnId: string) {
+async function runRestBench(ownerToken: string, boardId: string, columnId: string): Promise<RestBenchReport> {
   console.log('\nREST scenarios')
   const readLatencies: number[] = []
   await runWithConcurrency(REST_ITERATIONS, REST_CONCURRENCY, async () => {
@@ -193,7 +228,7 @@ async function runRestBench(ownerToken: string, boardId: string, columnId: strin
     await requestJson(`/boards/${boardId}`, { method: 'GET', token: ownerToken })
     readLatencies.push(performance.now() - startedAt)
   })
-  printStats(`GET /boards/:id x${REST_ITERATIONS}`, readLatencies)
+  const getBoardMs = printStats(`GET /boards/:id x${REST_ITERATIONS}`, readLatencies)
 
   const createdCardIds: string[] = []
   const createLatencies: number[] = []
@@ -203,7 +238,7 @@ async function runRestBench(ownerToken: string, boardId: string, columnId: strin
     createLatencies.push(performance.now() - startedAt)
     createdCardIds.push(card.id)
   })
-  printStats(`POST /columns/:id/cards x${REST_ITERATIONS}`, createLatencies)
+  const createCardMs = printStats(`POST /columns/:id/cards x${REST_ITERATIONS}`, createLatencies)
 
   const moveLatencies: number[] = []
   await runWithConcurrency(createdCardIds.length, REST_CONCURRENCY, async (index) => {
@@ -215,10 +250,16 @@ async function runRestBench(ownerToken: string, boardId: string, columnId: strin
     })
     moveLatencies.push(performance.now() - startedAt)
   })
-  printStats(`PATCH /cards/:id (move) x${createdCardIds.length}`, moveLatencies)
+  const moveCardMs = printStats(`PATCH /cards/:id (move) x${createdCardIds.length}`, moveLatencies)
+
+  return {
+    getBoardMs,
+    createCardMs,
+    moveCardMs,
+  }
 }
 
-async function runWsBench(owner: BenchSession, boardId: string, clientsCount: number) {
+async function runWsBench(owner: BenchSession, boardId: string, clientsCount: number): Promise<WsScenarioReport> {
   const users: BenchSession[] = [owner]
   for (let index = 1; index < clientsCount; index += 1) {
     const session = await login(`bench-user-${clientsCount}-${index}`, 'editor')
@@ -273,7 +314,7 @@ async function runWsBench(owner: BenchSession, boardId: string, clientsCount: nu
     })
   }
 
-  printStats(`WS connect+join (${clientsCount} clients)`, joinLatencies)
+  const joinMs = printStats(`WS connect+join (${clientsCount} clients)`, joinLatencies)
 
   const source = clients[0]
   const broadcastStartedAt = performance.now()
@@ -300,8 +341,8 @@ async function runWsBench(owner: BenchSession, boardId: string, clientsCount: nu
     ),
   )
 
-  const broadcastDuration = performance.now() - broadcastStartedAt
-  console.log(`WS broadcast fanout (${clientsCount} clients)`.padEnd(32) + ` total=${formatMs(broadcastDuration)}`)
+  const broadcastTotalMs = performance.now() - broadcastStartedAt
+  console.log(`WS broadcast fanout (${clientsCount} clients)`.padEnd(32) + ` total=${formatMs(broadcastTotalMs)}`)
 
   for (const client of clients) {
     client.socket.close()
@@ -331,12 +372,19 @@ async function runWsBench(owner: BenchSession, boardId: string, clientsCount: nu
     )
     client.socket = socket
   }
-  const reconnectDuration = performance.now() - reconnectStartedAt
-  console.log(`WS reconnect burst (${clientsCount})`.padEnd(32) + ` total=${formatMs(reconnectDuration)}`)
+  const reconnectTotalMs = performance.now() - reconnectStartedAt
+  console.log(`WS reconnect burst (${clientsCount})`.padEnd(32) + ` total=${formatMs(reconnectTotalMs)}`)
 
   for (const client of clients) {
     client.socket.close()
     await onceClosed(client.socket)
+  }
+
+  return {
+    clients: clientsCount,
+    joinMs,
+    broadcastTotalMs,
+    reconnectTotalMs,
   }
 }
 
@@ -351,24 +399,72 @@ async function onceClosed(socket: WebSocket) {
 }
 
 async function run() {
-  console.log('SyncBoard benchmark')
-  console.log(`API: ${API_URL}`)
-  console.log(`WS: ${WS_URL}`)
-  console.log(`REST iterations: ${REST_ITERATIONS}, concurrency: ${REST_CONCURRENCY}`)
-  console.log(`WS clients scenarios: ${WS_CLIENT_SET.join(', ')}`)
+  let bootedApp: Awaited<ReturnType<typeof buildApp>> | null = null
 
-  const owner = await login('bench-owner', 'owner')
-  const board = await createBoard(owner.token, `Bench Board ${Date.now()}`)
-  const column = await createColumn(owner.token, board.id, 'Bench Column')
+  try {
+    if (BOOT_API) {
+      process.env.PERSISTENCE_MODE = 'memory'
+      process.env.APP_ORIGIN = '*'
 
-  await runRestBench(owner.token, board.id, column.id)
+      bootedApp = await buildApp({
+        origin: '*',
+        rateLimitConfig: {
+          auth: { windowMs: 60_000, max: 10_000 },
+          mutation: { windowMs: 60_000, max: 100_000 },
+          ws: { windowMs: 60_000, max: 10_000 },
+        },
+      })
+      await bootedApp.listen({ host: '127.0.0.1', port: BOOT_PORT })
+      apiUrl = `http://127.0.0.1:${BOOT_PORT}`
+      wsUrl = `ws://127.0.0.1:${BOOT_PORT}/ws`
+      console.log(`Booted benchmark API at ${apiUrl}`)
+    }
 
-  console.log('\nWebSocket scenarios')
-  for (const clientsCount of WS_CLIENT_SET) {
-    await runWsBench(owner, board.id, clientsCount)
+    console.log('SyncBoard benchmark')
+    console.log(`API: ${apiUrl}`)
+    console.log(`WS: ${wsUrl}`)
+    console.log(`REST iterations: ${REST_ITERATIONS}, concurrency: ${REST_CONCURRENCY}`)
+    console.log(`WS clients scenarios: ${WS_CLIENT_SET.join(', ')}`)
+
+    const owner = await login('bench-owner', 'owner')
+    const board = await createBoard(owner.token, `Bench Board ${Date.now()}`)
+    const column = await createColumn(owner.token, board.id, 'Bench Column')
+
+    const rest = await runRestBench(owner.token, board.id, column.id)
+
+    console.log('\nWebSocket scenarios')
+    const wsReports: WsScenarioReport[] = []
+    for (const clientsCount of WS_CLIENT_SET) {
+      wsReports.push(await runWsBench(owner, board.id, clientsCount))
+    }
+
+    const report: BenchReport = {
+      generatedAt: new Date().toISOString(),
+      config: {
+        apiUrl,
+        wsUrl,
+        restIterations: REST_ITERATIONS,
+        restConcurrency: REST_CONCURRENCY,
+        wsClientSet: WS_CLIENT_SET,
+      },
+      rest,
+      ws: wsReports,
+    }
+
+    if (BENCH_OUTPUT_FILE) {
+      await writeFile(BENCH_OUTPUT_FILE, JSON.stringify(report, null, 2), 'utf-8')
+      console.log(`\nBench JSON report written to ${BENCH_OUTPUT_FILE}`)
+    }
+
+    console.log('\nBenchmark run completed.')
+    console.log('BENCH_REPORT_JSON_START')
+    console.log(JSON.stringify(report))
+    console.log('BENCH_REPORT_JSON_END')
+  } finally {
+    if (bootedApp) {
+      await bootedApp.close()
+    }
   }
-
-  console.log('\nBenchmark run completed.')
 }
 
 run().catch((error) => {

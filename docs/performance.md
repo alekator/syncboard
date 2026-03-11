@@ -23,6 +23,12 @@ Run it from repo root:
 pnpm bench:api
 ```
 
+CI-friendly benchmark + regression gate:
+
+```bash
+pnpm performance:ci
+```
+
 Or directly from API package:
 
 ```bash
@@ -86,6 +92,29 @@ For each client-count set (for example 20, 50, 100):
 - WS: join p95 latency
 - WS: broadcast fanout total time
 - WS: reconnect burst total time
+
+## CI Regression Gate
+
+Performance gate inputs:
+
+- Benchmark report: `ops/performance/bench-latest.json`
+- Threshold baseline: `ops/performance/ci-thresholds.json`
+
+Gate commands:
+
+```bash
+pnpm bench:ci
+pnpm bench:gate
+```
+
+`pnpm performance:ci` runs both commands in sequence.
+
+Current CI scenario profile:
+
+- `BENCH_BOOT_API=1` (self-boot API in memory mode)
+- `BENCH_REST_ITERATIONS=20`
+- `BENCH_REST_CONCURRENCY=4`
+- `BENCH_WS_CLIENTS=10,20`
 
 ## Results Table Template
 
