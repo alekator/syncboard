@@ -23,6 +23,8 @@ This document explains how to inspect SyncBoard runtime health, metrics, and log
   - `syncboard_ws_reconnect_total` (counter)
   - `syncboard_failed_mutations_total` (counter)
   - `syncboard_forbidden_total` (counter)
+  - `syncboard_http_request_duration_ms` (histogram; labels: `method`, `route`, `status_class`)
+  - `syncboard_ws_reconnect_recovery_duration_ms` (histogram)
 
 ### Logs
 
@@ -104,6 +106,24 @@ rate(syncboard_ws_reconnect_total[5m])
 
 ```promql
 syncboard_ws_active_connections
+```
+
+### API latency p95 by route (5m)
+
+```promql
+histogram_quantile(
+  0.95,
+  sum by (le, route) (rate(syncboard_http_request_duration_ms_bucket[5m]))
+)
+```
+
+### WS reconnect recovery p95 (5m)
+
+```promql
+histogram_quantile(
+  0.95,
+  sum by (le) (rate(syncboard_ws_reconnect_recovery_duration_ms_bucket[5m]))
+)
 ```
 
 ## Log Examples
@@ -188,5 +208,5 @@ Each alert includes `runbook_url` pointing to local runbook docs.
 
 ## Current Gaps
 
-- Route-level latency histograms are not exposed yet.
-- Reconnect recovery duration histogram is not exposed yet.
+- No explicit per-user/session tracing metric dimensions to avoid high cardinality.
+- No business KPI metrics yet (for example, board create success ratio).

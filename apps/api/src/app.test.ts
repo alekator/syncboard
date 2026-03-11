@@ -102,6 +102,8 @@ describe('buildApp', () => {
     expect(response.body).toContain('syncboard_ws_reconnect_total')
     expect(response.body).toContain('syncboard_failed_mutations_total')
     expect(response.body).toContain('syncboard_forbidden_total')
+    expect(response.body).toContain('syncboard_http_request_duration_ms')
+    expect(response.body).toContain('syncboard_ws_reconnect_recovery_duration_ms')
   })
 
   it('tracks forbidden and failed mutation counters', async () => {
@@ -713,6 +715,7 @@ describe('buildApp', () => {
 
     const finalMetrics = await app.inject({ method: 'GET', url: '/metrics' })
     expect(metricValue(finalMetrics.body, 'syncboard_ws_active_connections')).toBe(0)
+    expect(finalMetrics.body).toContain('syncboard_http_request_duration_ms_count{')
   })
 
   it('replays missed board events on reconnect with fromSequence', async () => {
@@ -818,6 +821,11 @@ describe('buildApp', () => {
     }
 
     expect(replayedEvent.sequence).toBeGreaterThan(firstColumnEvent.sequence)
+
+    const replayMetrics = await app.inject({ method: 'GET', url: '/metrics' })
+    expect(metricValue(replayMetrics.body, 'syncboard_ws_reconnect_recovery_duration_ms_count')).toBeGreaterThanOrEqual(
+      1,
+    )
 
     socketB.close()
     await once(socketB, 'close')

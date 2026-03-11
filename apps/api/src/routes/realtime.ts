@@ -87,7 +87,11 @@ export async function registerRealtimeRoutes(
           return
         }
 
+        const reconnectStartedAt = parsed.data.fromSequence !== undefined ? Date.now() : undefined
         await realtimeHub.joinBoard(client, parsed.data.boardId, parsed.data.fromSequence)
+        if (reconnectStartedAt !== undefined) {
+          metrics.observeWsReconnectRecovery(Date.now() - reconnectStartedAt)
+        }
       }
 
       if (parsed.data.type === 'board.leave') {

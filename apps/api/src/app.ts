@@ -60,6 +60,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     ...options.rateLimitConfig,
   }
   const rateLimiter = new InMemoryRateLimiter(rateLimitConfig)
+  const requestStartedAt = new Map<string, bigint>()
 
   const app = Fastify({
     logger: true,
@@ -123,10 +124,19 @@ export async function buildApp(options: BuildAppOptions = {}) {
   registerIdempotencyHooks(app, idempotencyStore)
 
   app.addHook('onRequest', async (request, reply) => {
+    requestStartedAt.set(request.id, process.hrtime.bigint())
     reply.header('x-request-id', request.id)
   })
 
   app.addHook('onResponse', async (request, reply) => {
+    const startedAt = requestStartedAt.get(request.id)
+    requestStartedAt.delete(request.id)
+    if (startedAt !== undefined) {
+      const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000
+      const route = typeof request.routeOptions.url === 'string' ? request.routeOptions.url : request.url.split('?')[0]
+      metrics.observeHttpRequestDuration(request.method, route, reply.statusCode, durationMs)
+    }
+
     if (reply.statusCode === 403) {
       metrics.incrementCounter('forbiddenTotal')
     }

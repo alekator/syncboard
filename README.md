@@ -107,6 +107,8 @@ flowchart LR
 - `syncboard_ws_reconnect_total` tracks reconnect count.
 - `syncboard_failed_mutations_total` tracks failed mutation count.
 - `syncboard_forbidden_total` tracks forbidden response count.
+- `syncboard_http_request_duration_ms` tracks HTTP latency by method/route/status class.
+- `syncboard_ws_reconnect_recovery_duration_ms` tracks reconnect replay recovery duration.
 - `x-request-id` is attached to HTTP responses for request tracing.
 - Detailed diagnostics and query cheatsheet: `docs/observability.md`
 - Local Prometheus/Grafana stack: `pnpm obs:up` (Grafana at `http://localhost:3002`)
