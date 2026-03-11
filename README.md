@@ -171,6 +171,18 @@ CI workflow is defined in `.github/workflows/ci.yml` and includes:
 - Quality job: install, lint, typecheck, tests, build
 - E2E job: Playwright browser install and e2e execution
 
+## Performance Benchmark
+
+Run local REST + WebSocket benchmark scenarios:
+
+```bash
+pnpm bench:api
+```
+
+Detailed benchmark guide:
+
+- `docs/performance.md`
+
 ## Realtime Event Model
 
 Key board events:
@@ -195,6 +207,7 @@ Events include sequencing metadata, and the client ignores stale envelopes to ke
 - `pnpm lint`
 - `pnpm typecheck`
 - `pnpm seed:demo`
+- `pnpm bench:api`
 - `pnpm infra:up`
 - `pnpm infra:down`
 - `pnpm dev:docker`
@@ -210,4 +223,4 @@ Events include sequencing metadata, and the client ignores stale envelopes to ke
 - `pnpm --filter @syncboard/api dev`
 - `pnpm --filter @syncboard/api test`
 - `pnpm --filter @syncboard/api seed:demo`
-
+- `pnpm --filter @syncboard/api bench`
