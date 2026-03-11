@@ -258,6 +258,9 @@ Detailed benchmark guide:
 - `docs/observability.md`
 - `docs/performance.md`
 - `docs/security.md`
+- `docs/testing.md`
+- `docs/deployment.md`
+- `docs/incident-response.md`
 - `docs/adr/README.md`
 - `docs/runbooks/`
 
