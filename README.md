@@ -107,6 +107,19 @@ flowchart LR
 - `syncboard_forbidden_total` tracks forbidden response count.
 - `x-request-id` is attached to HTTP responses for request tracing.
 
+## SLO Targets
+
+Initial service objectives are defined in:
+
+- `docs/slo.md`
+
+Current headline targets:
+
+- API availability: `>= 99.9%` (30d)
+- Board snapshot latency: `GET /boards/:id p95 < 250ms` (7d)
+- Mutation failure ratio: `< 1.0%` (7d)
+- Reconnect recovery: `p95 < 3s` (7d)
+
 ## Security Model Summary
 
 - REST routes require bearer auth.
@@ -231,6 +244,7 @@ Detailed benchmark guide:
 
 ## Engineering Docs
 
+- `docs/slo.md`
 - `docs/performance.md`
 - `docs/adr/README.md`
 
