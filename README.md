@@ -234,6 +234,11 @@ Detailed benchmark guide:
 - `docs/performance.md`
 - `docs/adr/README.md`
 
+## Visual State Coverage
+
+- Open `http://localhost:5173/__ui-states` for a dedicated UI state gallery.
+- Gallery covers empty/loading/error/disconnected/reconnecting/permission states, variants, and feedback banners.
+
 ## Known Trade-offs
 
 - Realtime replay buffer is in-memory and bounded; long disconnects may require full snapshot refresh.
@@ -243,7 +248,7 @@ Detailed benchmark guide:
 ## Future Improvements
 
 - Persist replay/event stream for longer offline recovery windows.
-- Add visual-state coverage tooling (Storybook or equivalent) for UI state regression.
+- Add Storybook snapshots on top of the existing UI state gallery for automated visual diffs.
 - Expand observability with dashboard presets and alert examples.
 
 ## Realtime Event Model

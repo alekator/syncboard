@@ -5,6 +5,7 @@ import { useSessionStore } from '@/features/auth/model/session-store'
 import { LoginPage } from '@/features/auth/ui/login-page'
 import { BoardPage } from '@/features/board/ui/board-page'
 import { BoardsPage } from '@/features/boards/ui/boards-page'
+import { UiStatesPage } from '@/features/ui-states/ui/ui-states-page'
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const token = useSessionStore((state) => state.token)
@@ -36,6 +37,10 @@ const router = createBrowserRouter([
         <BoardPage />
       </RequireAuth>
     ),
+  },
+  {
+    path: '/__ui-states',
+    element: <UiStatesPage />,
   },
   {
     path: '*',
