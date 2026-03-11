@@ -513,6 +513,70 @@ describe('buildApp', () => {
     })
   })
 
+  it('rate limits auth login requests', async () => {
+    app = await buildApp({
+      origin: '*',
+      rateLimitConfig: {
+        auth: { max: 2, windowMs: 60_000 },
+      },
+    })
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { name: 'A', role: 'owner' },
+    })
+    const second = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { name: 'B', role: 'owner' },
+    })
+    const third = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { name: 'C', role: 'owner' },
+    })
+
+    expect(first.statusCode).toBe(200)
+    expect(second.statusCode).toBe(200)
+    expect(third.statusCode).toBe(429)
+    expect(third.headers['retry-after']).toBeDefined()
+    expect(third.json()).toEqual({ message: 'Rate limit exceeded for auth requests' })
+  })
+
+  it('rate limits mutation requests', async () => {
+    app = await buildApp({
+      origin: '*',
+      rateLimitConfig: {
+        mutation: { max: 1, windowMs: 60_000 },
+      },
+    })
+    const owner = await login('Owner', 'owner')
+
+    const firstCreate = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
+      payload: { name: 'Board #1' },
+    })
+
+    const secondCreate = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
+      payload: { name: 'Board #2' },
+    })
+
+    expect(firstCreate.statusCode).toBe(201)
+    expect(secondCreate.statusCode).toBe(429)
+    expect(secondCreate.headers['retry-after']).toBeDefined()
+    expect(secondCreate.json()).toEqual({ message: 'Rate limit exceeded for mutation requests' })
+  })
+
   it('broadcasts realtime events for board clients over websocket', async () => {
     app = await buildApp({ origin: '*' })
     await app.listen({ host: '127.0.0.1', port: 0 })
@@ -757,5 +821,29 @@ describe('buildApp', () => {
 
     socketB.close()
     await once(socketB, 'close')
+  })
+
+  it('rate limits websocket handshake attempts', async () => {
+    app = await buildApp({
+      origin: '*',
+      rateLimitConfig: {
+        ws: { max: 1, windowMs: 60_000 },
+      },
+    })
+    await app.listen({ host: '127.0.0.1', port: 0 })
+
+    const owner = await login('Owner', 'owner')
+    const address = app.server.address() as AddressInfo
+
+    const firstSocket = new WebSocket(`ws://127.0.0.1:${address.port}/ws?token=${owner.token}`)
+    await once(firstSocket, 'open')
+
+    const secondSocket = new WebSocket(`ws://127.0.0.1:${address.port}/ws?token=${owner.token}`)
+    const [closeCode] = (await once(secondSocket, 'close')) as [number]
+
+    expect(closeCode).toBe(1013)
+
+    firstSocket.close()
+    await once(firstSocket, 'close')
   })
 })

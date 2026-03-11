@@ -9,6 +9,7 @@ import { RealtimeHub } from '../realtime/realtime-hub.js'
 import type { SessionStore } from '../auth/session-store.js'
 import type { BoardStore } from '../domain/board-store.js'
 import type { MetricsRegistry } from '../observability/metrics.js'
+import type { InMemoryRateLimiter } from '../auth/rate-limit.js'
 
 const CLIENT_EVENT_SCHEMA = z.discriminatedUnion('type', [
   z.object({
@@ -48,8 +49,15 @@ export async function registerRealtimeRoutes(
   sessionStore: SessionStore,
   boardStore: BoardStore,
   metrics: MetricsRegistry,
+  rateLimiter: InMemoryRateLimiter,
 ) {
   app.get('/ws', { websocket: true }, async (socket, request) => {
+    const wsRate = rateLimiter.consume('ws', request.ip)
+    if (!wsRate.allowed) {
+      socket.close(1013, 'Rate limit exceeded')
+      return
+    }
+
     const query = CLIENT_QUERY_SCHEMA.safeParse(request.query)
     if (!query.success) {
       socket.close(1008, 'Unauthorized')

@@ -6,6 +6,12 @@ import { z } from 'zod'
 
 import { InMemoryBoardStore } from './domain/board-store.js'
 import { InMemorySessionStore } from './auth/session-store.js'
+import {
+  DEFAULT_RATE_LIMIT_CONFIG,
+  InMemoryRateLimiter,
+  resolveRequestScope,
+  type RateLimitConfig,
+} from './auth/rate-limit.js'
 import { resolvePersistenceConfig } from './config/persistence.js'
 import { RealtimeHub } from './realtime/realtime-hub.js'
 import { PrismaBoardStore } from './infrastructure/prisma/prisma-board-store.js'
@@ -35,12 +41,18 @@ type BuildAppOptions = {
   realtimeHub?: RealtimeHub
   sessionStore?: SessionStore
   presenceStore?: PresenceStore
+  rateLimitConfig?: Partial<RateLimitConfig>
 }
 
 export async function buildApp(options: BuildAppOptions = {}) {
   const persistenceConfig = resolvePersistenceConfig()
   const metrics = new MetricsRegistry()
   const idempotencyStore = new InMemoryIdempotencyStore()
+  const rateLimitConfig: RateLimitConfig = {
+    ...DEFAULT_RATE_LIMIT_CONFIG,
+    ...options.rateLimitConfig,
+  }
+  const rateLimiter = new InMemoryRateLimiter(rateLimitConfig)
 
   const app = Fastify({
     logger: true,
@@ -115,7 +127,30 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await registerHealthRoute(app)
   await registerMetricsRoute(app, metrics)
   await registerAuthRoutes(app, sessionStore)
-  await registerRealtimeRoutes(app, realtimeHub, sessionStore, boardStore, metrics)
+  app.addHook('preHandler', async (request, reply) => {
+    const isMutation = request.method === 'POST' || request.method === 'PATCH' || request.method === 'DELETE'
+    const isAuthLogin = request.method === 'POST' && request.url === '/auth/login'
+
+    if (isAuthLogin) {
+      const result = rateLimiter.consume('auth', request.ip)
+      if (!result.allowed) {
+        reply.header('retry-after', String(result.retryAfterSec))
+        return reply.status(429).send({ message: 'Rate limit exceeded for auth requests' })
+      }
+      return
+    }
+
+    if (!isMutation || request.url.startsWith('/auth/')) {
+      return
+    }
+
+    const result = rateLimiter.consume('mutation', resolveRequestScope(request))
+    if (!result.allowed) {
+      reply.header('retry-after', String(result.retryAfterSec))
+      return reply.status(429).send({ message: 'Rate limit exceeded for mutation requests' })
+    }
+  })
+  await registerRealtimeRoutes(app, realtimeHub, sessionStore, boardStore, metrics, rateLimiter)
   await registerBoardRoutes(app, boardStore, realtimeHub, sessionStore)
 
   return app

@@ -132,6 +132,7 @@ Current headline targets:
 - Write operations are blocked for `viewer` role.
 - Role header spoofing is not trusted as authority.
 - Mutation endpoints support optional `Idempotency-Key` to deduplicate safe client retries.
+- Rate limiting is enabled for auth login, mutation endpoints, and WS handshakes.
 
 ## Monorepo Structure
 
