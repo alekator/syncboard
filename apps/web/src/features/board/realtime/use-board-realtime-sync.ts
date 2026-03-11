@@ -25,7 +25,6 @@ export function useBoardRealtimeSync(boardId: string | undefined) {
 
   useEffect(() => {
     if (!boardId || !currentUserId || !sessionToken) {
-      setStatus('disconnected')
       return
     }
 
