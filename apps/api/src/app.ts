@@ -85,8 +85,8 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(websocket)
   await registerHealthRoute(app)
   await registerAuthRoutes(app, sessionStore)
-  await registerRealtimeRoutes(app, realtimeHub)
-  await registerBoardRoutes(app, boardStore, realtimeHub)
+  await registerRealtimeRoutes(app, realtimeHub, sessionStore, boardStore)
+  await registerBoardRoutes(app, boardStore, realtimeHub, sessionStore)
 
   return app
 }

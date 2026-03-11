@@ -4,8 +4,39 @@ async function login(page: import('@playwright/test').Page, name: string, role: 
   await page.goto('/login')
   await page.getByPlaceholder('Your name').fill(name)
   await page.getByRole('combobox').selectOption(role)
+  const loginResponsePromise = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && response.url().endsWith('/auth/login'),
+  )
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('heading', { name: 'SyncBoard' })).toBeVisible()
+  const loginResponse = await loginResponsePromise
+  const payload = (await loginResponse.json()) as {
+    token: string
+    user: { id: string }
+  }
+
+  return {
+    token: payload.token,
+    userId: payload.user.id,
+  }
+}
+
+async function addBoardMember(
+  ownerPage: import('@playwright/test').Page,
+  ownerToken: string,
+  boardId: string,
+  userId: string,
+  role: 'owner' | 'editor' | 'viewer',
+) {
+  const response = await ownerPage.request.post(`http://localhost:3001/boards/${boardId}/members`, {
+    headers: {
+      authorization: `Bearer ${ownerToken}`,
+      'content-type': 'application/json',
+    },
+    data: { userId, role },
+  })
+
+  expect(response.ok()).toBeTruthy()
 }
 
 test('realtime sync works between two sessions', async ({ browser }) => {
@@ -21,14 +52,20 @@ test('realtime sync works between two sessions', async ({ browser }) => {
     const ownerPage = await ownerContext.newPage()
     const editorPage = await editorContext.newPage()
 
-    await login(ownerPage, 'Owner User', 'owner')
+    const ownerSession = await login(ownerPage, 'Owner User', 'owner')
 
     await ownerPage.getByPlaceholder('New board name').fill(boardName)
     await ownerPage.getByRole('button', { name: 'Create board' }).click()
     await ownerPage.getByRole('link', { name: boardName }).click()
     await expect(ownerPage.getByRole('heading', { name: boardName })).toBeVisible()
 
-    await login(editorPage, 'Editor User', 'editor')
+    const editorSession = await login(editorPage, 'Editor User', 'editor')
+
+    const boardId = ownerPage.url().split('/boards/')[1]
+    expect(boardId).toBeTruthy()
+    await addBoardMember(ownerPage, ownerSession.token, boardId!, editorSession.userId, 'editor')
+
+    await editorPage.reload()
     await expect(editorPage.getByRole('link', { name: boardName })).toBeVisible({ timeout: 15_000 })
     await editorPage.getByRole('link', { name: boardName }).click()
     await expect(editorPage.getByRole('heading', { name: boardName })).toBeVisible({ timeout: 15_000 })

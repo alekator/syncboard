@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import {
+  boardRoleSchema,
   createBoardBodySchema,
   createCardBodySchema,
   createColumnBodySchema,
@@ -11,7 +12,8 @@ import {
 
 import type { BoardStore } from '../domain/board-store.js'
 import type { RealtimeHub } from '../realtime/realtime-hub.js'
-import { requireWriteRole } from '../auth/rbac.js'
+import type { SessionStore } from '../auth/session-store.js'
+import { requireAuth, requireWriteRole } from '../auth/rbac.js'
 
 const BOARD_ID_PARAMS_SCHEMA = z.object({
   boardId: entityIdSchema,
@@ -25,22 +27,42 @@ const CARD_ID_PARAMS_SCHEMA = z.object({
   cardId: entityIdSchema,
 })
 
+const UPSERT_MEMBER_BODY_SCHEMA = z.object({
+  userId: entityIdSchema,
+  role: boardRoleSchema,
+})
+
 function replyValidationError(reply: FastifyReply, message: string) {
   return reply.status(400).send({ message })
+}
+
+async function resolveMemberRole(store: BoardStore, boardId: string, userId: string) {
+  return store.getBoardMemberRole(boardId, userId)
 }
 
 export async function registerBoardRoutes(
   app: FastifyInstance,
   store: BoardStore,
   realtimeHub: RealtimeHub,
+  sessionStore: SessionStore,
 ) {
-  app.get('/boards', async () => {
-    const boards = await store.listBoards()
+  app.get('/boards', async (request, reply) => {
+    const authUser = requireAuth(request, reply)
+    if (!authUser) {
+      return
+    }
+
+    const boards = await store.listBoardsForUser(authUser.id)
     return { boards }
   })
 
   app.post('/boards', async (request, reply) => {
-    if (!requireWriteRole(request, reply)) {
+    const authUser = requireAuth(request, reply)
+    if (!authUser) {
+      return
+    }
+
+    if (!requireWriteRole(authUser.role, reply)) {
       return
     }
 
@@ -49,14 +71,24 @@ export async function registerBoardRoutes(
       return replyValidationError(reply, 'Invalid board payload')
     }
 
-    const board = await store.createBoard(parsed.data.name)
+    const board = await store.createBoard(parsed.data.name, authUser.id)
     return reply.status(201).send(board)
   })
 
   app.get('/boards/:boardId', async (request, reply) => {
+    const authUser = requireAuth(request, reply)
+    if (!authUser) {
+      return
+    }
+
     const params = BOARD_ID_PARAMS_SCHEMA.safeParse(request.params)
     if (!params.success) {
       return replyValidationError(reply, 'Invalid board id')
+    }
+
+    const role = await resolveMemberRole(store, params.data.boardId, authUser.id)
+    if (!role) {
+      return reply.status(403).send({ message: 'Forbidden: board access denied' })
     }
 
     const snapshot = await store.getBoardSnapshot(params.data.boardId)
@@ -68,13 +100,22 @@ export async function registerBoardRoutes(
   })
 
   app.patch('/boards/:boardId', async (request, reply) => {
-    if (!requireWriteRole(request, reply)) {
+    const authUser = requireAuth(request, reply)
+    if (!authUser) {
       return
     }
 
     const params = BOARD_ID_PARAMS_SCHEMA.safeParse(request.params)
     if (!params.success) {
       return replyValidationError(reply, 'Invalid board id')
+    }
+
+    const role = await resolveMemberRole(store, params.data.boardId, authUser.id)
+    if (!role) {
+      return reply.status(403).send({ message: 'Forbidden: board access denied' })
+    }
+    if (!requireWriteRole(role, reply)) {
+      return
     }
 
     const body = createBoardBodySchema.safeParse(request.body)
@@ -91,13 +132,22 @@ export async function registerBoardRoutes(
   })
 
   app.delete('/boards/:boardId', async (request, reply) => {
-    if (!requireWriteRole(request, reply)) {
+    const authUser = requireAuth(request, reply)
+    if (!authUser) {
       return
     }
 
     const params = BOARD_ID_PARAMS_SCHEMA.safeParse(request.params)
     if (!params.success) {
       return replyValidationError(reply, 'Invalid board id')
+    }
+
+    const role = await resolveMemberRole(store, params.data.boardId, authUser.id)
+    if (!role) {
+      return reply.status(403).send({ message: 'Forbidden: board access denied' })
+    }
+    if (!requireWriteRole(role, reply)) {
+      return
     }
 
     const deleted = await store.deleteBoard(params.data.boardId)
@@ -108,14 +158,57 @@ export async function registerBoardRoutes(
     return reply.status(204).send()
   })
 
-  app.post('/boards/:boardId/columns', async (request, reply) => {
-    if (!requireWriteRole(request, reply)) {
+  app.post('/boards/:boardId/members', async (request, reply) => {
+    const authUser = requireAuth(request, reply)
+    if (!authUser) {
       return
     }
 
     const params = BOARD_ID_PARAMS_SCHEMA.safeParse(request.params)
     if (!params.success) {
       return replyValidationError(reply, 'Invalid board id')
+    }
+
+    const ownerRole = await resolveMemberRole(store, params.data.boardId, authUser.id)
+    if (ownerRole !== 'owner') {
+      return reply.status(403).send({ message: 'Forbidden: only owner can manage members' })
+    }
+
+    const body = UPSERT_MEMBER_BODY_SCHEMA.safeParse(request.body)
+    if (!body.success) {
+      return replyValidationError(reply, 'Invalid board member payload')
+    }
+
+    const targetUser = await sessionStore.getUserById(body.data.userId)
+    if (!targetUser) {
+      return reply.status(404).send({ message: 'User not found' })
+    }
+
+    const added = await store.addBoardMember(params.data.boardId, body.data.userId, body.data.role)
+    if (!added) {
+      return reply.status(404).send({ message: 'Board not found' })
+    }
+
+    return reply.status(204).send()
+  })
+
+  app.post('/boards/:boardId/columns', async (request, reply) => {
+    const authUser = requireAuth(request, reply)
+    if (!authUser) {
+      return
+    }
+
+    const params = BOARD_ID_PARAMS_SCHEMA.safeParse(request.params)
+    if (!params.success) {
+      return replyValidationError(reply, 'Invalid board id')
+    }
+
+    const role = await resolveMemberRole(store, params.data.boardId, authUser.id)
+    if (!role) {
+      return reply.status(403).send({ message: 'Forbidden: board access denied' })
+    }
+    if (!requireWriteRole(role, reply)) {
+      return
     }
 
     const body = createColumnBodySchema.safeParse(request.body)
@@ -141,13 +234,27 @@ export async function registerBoardRoutes(
   })
 
   app.patch('/columns/:columnId', async (request, reply) => {
-    if (!requireWriteRole(request, reply)) {
+    const authUser = requireAuth(request, reply)
+    if (!authUser) {
       return
     }
 
     const params = COLUMN_ID_PARAMS_SCHEMA.safeParse(request.params)
     if (!params.success) {
       return replyValidationError(reply, 'Invalid column id')
+    }
+
+    const column = await store.getColumn(params.data.columnId)
+    if (!column) {
+      return reply.status(404).send({ message: 'Column not found' })
+    }
+
+    const role = await resolveMemberRole(store, column.boardId, authUser.id)
+    if (!role) {
+      return reply.status(403).send({ message: 'Forbidden: board access denied' })
+    }
+    if (!requireWriteRole(role, reply)) {
+      return
     }
 
     const body = updateColumnBodySchema.safeParse(request.body)
@@ -155,31 +262,45 @@ export async function registerBoardRoutes(
       return replyValidationError(reply, 'Invalid column payload')
     }
 
-    const column = await store.updateColumn(params.data.columnId, body.data)
-    if (!column) {
+    const updatedColumn = await store.updateColumn(params.data.columnId, body.data)
+    if (!updatedColumn) {
       return reply.status(404).send({ message: 'Column not found' })
     }
 
     realtimeHub.publishBoardEvent({
-      boardId: column.boardId,
-      entityId: column.id,
+      boardId: updatedColumn.boardId,
+      entityId: updatedColumn.id,
       event: {
         type: 'column.updated',
-        payload: column,
+        payload: updatedColumn,
       },
     })
 
-    return column
+    return updatedColumn
   })
 
   app.post('/columns/:columnId/cards', async (request, reply) => {
-    if (!requireWriteRole(request, reply)) {
+    const authUser = requireAuth(request, reply)
+    if (!authUser) {
       return
     }
 
     const params = COLUMN_ID_PARAMS_SCHEMA.safeParse(request.params)
     if (!params.success) {
       return replyValidationError(reply, 'Invalid column id')
+    }
+
+    const column = await store.getColumn(params.data.columnId)
+    if (!column) {
+      return reply.status(404).send({ message: 'Column not found' })
+    }
+
+    const role = await resolveMemberRole(store, column.boardId, authUser.id)
+    if (!role) {
+      return reply.status(403).send({ message: 'Forbidden: board access denied' })
+    }
+    if (!requireWriteRole(role, reply)) {
+      return
     }
 
     const body = createCardBodySchema.safeParse(request.body)
@@ -205,13 +326,27 @@ export async function registerBoardRoutes(
   })
 
   app.patch('/cards/:cardId', async (request, reply) => {
-    if (!requireWriteRole(request, reply)) {
+    const authUser = requireAuth(request, reply)
+    if (!authUser) {
       return
     }
 
     const params = CARD_ID_PARAMS_SCHEMA.safeParse(request.params)
     if (!params.success) {
       return replyValidationError(reply, 'Invalid card id')
+    }
+
+    const existingCard = await store.getCard(params.data.cardId)
+    if (!existingCard) {
+      return reply.status(404).send({ message: 'Card not found or invalid target column' })
+    }
+
+    const role = await resolveMemberRole(store, existingCard.boardId, authUser.id)
+    if (!role) {
+      return reply.status(403).send({ message: 'Forbidden: board access denied' })
+    }
+    if (!requireWriteRole(role, reply)) {
+      return
     }
 
     const body = updateCardBodySchema.safeParse(request.body)
@@ -255,7 +390,8 @@ export async function registerBoardRoutes(
   })
 
   app.delete('/cards/:cardId', async (request, reply) => {
-    if (!requireWriteRole(request, reply)) {
+    const authUser = requireAuth(request, reply)
+    if (!authUser) {
       return
     }
 
@@ -267,6 +403,14 @@ export async function registerBoardRoutes(
     const card = await store.getCard(params.data.cardId)
     if (!card) {
       return reply.status(404).send({ message: 'Card not found' })
+    }
+
+    const role = await resolveMemberRole(store, card.boardId, authUser.id)
+    if (!role) {
+      return reply.status(403).send({ message: 'Forbidden: board access denied' })
+    }
+    if (!requireWriteRole(role, reply)) {
+      return
     }
 
     const deleted = await store.deleteCard(params.data.cardId)

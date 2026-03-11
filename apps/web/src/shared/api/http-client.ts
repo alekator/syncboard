@@ -14,7 +14,6 @@ export async function requestJson<T>(path: string, init?: RequestInit): Promise<
     ...init,
     headers: {
       ...(init?.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      ...(session.user?.role ? { 'x-syncboard-role': session.user.role } : {}),
       ...(session.token ? { authorization: `Bearer ${session.token}` } : {}),
       ...(init?.headers ?? {}),
     },

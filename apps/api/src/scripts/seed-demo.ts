@@ -24,6 +24,7 @@ type ColumnResponse = {
 }
 
 type Session = {
+  userId: string
   name: string
   role: BoardRole
   token: string
@@ -35,7 +36,6 @@ const label = process.env.DEMO_LABEL ?? `Demo ${new Date().toISOString().slice(0
 async function requestJson<T>(
   path: string,
   init?: RequestInit & {
-    role?: BoardRole
     token?: string
   },
 ): Promise<T> {
@@ -43,7 +43,6 @@ async function requestJson<T>(
     method: init?.method ?? 'GET',
     headers: {
       ...(init?.body ? { 'content-type': 'application/json' } : {}),
-      ...(init?.role ? { 'x-syncboard-role': init.role } : {}),
       ...(init?.token ? { authorization: `Bearer ${init.token}` } : {}),
       ...(init?.headers ?? {}),
     },
@@ -69,6 +68,7 @@ async function loginUser(name: string, role: BoardRole): Promise<Session> {
   })
 
   return {
+    userId: session.user.id,
     name: session.user.name,
     role: session.user.role,
     token: session.token,
@@ -79,7 +79,6 @@ async function createBoard(session: Session, name: string) {
   return requestJson<BoardResponse>('/boards', {
     method: 'POST',
     token: session.token,
-    role: session.role,
     body: JSON.stringify({ name }),
   })
 }
@@ -88,7 +87,6 @@ async function createColumn(session: Session, boardId: string, title: string) {
   return requestJson<ColumnResponse>(`/boards/${boardId}/columns`, {
     method: 'POST',
     token: session.token,
-    role: session.role,
     body: JSON.stringify({ title }),
   })
 }
@@ -97,8 +95,18 @@ async function createCard(session: Session, columnId: string, title: string, des
   return requestJson(`/columns/${columnId}/cards`, {
     method: 'POST',
     token: session.token,
-    role: session.role,
     body: JSON.stringify({ title, description }),
+  })
+}
+
+async function addBoardMember(ownerSession: Session, boardId: string, memberSession: Session) {
+  return requestJson<void>(`/boards/${boardId}/members`, {
+    method: 'POST',
+    token: ownerSession.token,
+    body: JSON.stringify({
+      userId: memberSession.userId,
+      role: memberSession.role,
+    }),
   })
 }
 
@@ -128,6 +136,13 @@ async function run() {
   for (const [boardIndex, boardBlueprint] of dataset.boards.entries()) {
     const session = writableSessions[boardIndex % writableSessions.length]
     const board = await createBoard(session, boardBlueprint.name)
+    for (const memberSession of sessions) {
+      if (memberSession.userId === session.userId) {
+        continue
+      }
+
+      await addBoardMember(session, board.id, memberSession)
+    }
 
     let cardsCreated = 0
     for (const columnBlueprint of boardBlueprint.columns) {

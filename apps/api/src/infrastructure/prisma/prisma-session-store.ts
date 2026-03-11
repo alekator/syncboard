@@ -59,4 +59,20 @@ export class PrismaSessionStore implements SessionStore {
       role: member?.role ?? 'owner',
     } satisfies AuthUser
   }
+
+  async getUserById(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    })
+
+    if (!user) {
+      return null
+    }
+
+    return {
+      id: user.id,
+      name: user.name,
+      role: 'owner',
+    } satisfies AuthUser
+  }
 }

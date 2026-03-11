@@ -44,6 +44,17 @@ async function waitForRealtimeMessage(
 describe('buildApp', () => {
   let app: Awaited<ReturnType<typeof buildApp>> | undefined
 
+  async function login(name: string, role: 'owner' | 'editor' | 'viewer') {
+    const response = await app!.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { name, role },
+    })
+
+    expect(response.statusCode).toBe(200)
+    return response.json() as { token: string; user: { id: string; role: string; name: string } }
+  }
+
   afterEach(async () => {
     if (app) {
       await app.close()
@@ -91,12 +102,28 @@ describe('buildApp', () => {
     expect(deletePreflight.headers['access-control-allow-methods']).toContain('DELETE')
   })
 
-  it('supports board snapshot CRUD flow', async () => {
+  it('requires authentication for board routes', async () => {
     app = await buildApp({ origin: '*' })
+
+    const listBoards = await app.inject({
+      method: 'GET',
+      url: '/boards',
+    })
+
+    expect(listBoards.statusCode).toBe(401)
+    expect(listBoards.json()).toEqual({ message: 'Unauthorized' })
+  })
+
+  it('supports board snapshot CRUD flow for authorized owner', async () => {
+    app = await buildApp({ origin: '*' })
+    const owner = await login('Owner', 'owner')
 
     const createBoard = await app.inject({
       method: 'POST',
       url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
       payload: { name: 'Product Roadmap' },
     })
 
@@ -107,6 +134,9 @@ describe('buildApp', () => {
     const createColumn = await app.inject({
       method: 'POST',
       url: `/boards/${board.id}/columns`,
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
       payload: { title: 'Backlog' },
     })
 
@@ -117,6 +147,9 @@ describe('buildApp', () => {
     const createCard = await app.inject({
       method: 'POST',
       url: `/columns/${column.id}/cards`,
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
       payload: { title: 'Sync websocket events', description: 'Implement initial WS contract' },
     })
 
@@ -127,6 +160,9 @@ describe('buildApp', () => {
     const updateCard = await app.inject({
       method: 'PATCH',
       url: `/cards/${card.id}`,
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
       payload: { title: 'Sync WS events v1', position: 2500 },
     })
 
@@ -138,6 +174,9 @@ describe('buildApp', () => {
     const snapshot = await app.inject({
       method: 'GET',
       url: `/boards/${board.id}`,
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
     })
 
     expect(snapshot.statusCode).toBe(200)
@@ -155,6 +194,9 @@ describe('buildApp', () => {
     const deleteCard = await app.inject({
       method: 'DELETE',
       url: `/cards/${card.id}`,
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
     })
 
     expect(deleteCard.statusCode).toBe(204)
@@ -162,6 +204,9 @@ describe('buildApp', () => {
     const updateBoard = await app.inject({
       method: 'PATCH',
       url: `/boards/${board.id}`,
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
       payload: { name: 'Product Roadmap Updated' },
     })
 
@@ -176,22 +221,32 @@ describe('buildApp', () => {
     const deleteBoard = await app.inject({
       method: 'DELETE',
       url: `/boards/${board.id}`,
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
     })
     expect(deleteBoard.statusCode).toBe(204)
 
     const missingSnapshot = await app.inject({
       method: 'GET',
       url: `/boards/${board.id}`,
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
     })
-    expect(missingSnapshot.statusCode).toBe(404)
+    expect(missingSnapshot.statusCode).toBe(403)
   })
 
   it('rejects invalid board payload', async () => {
     app = await buildApp({ origin: '*' })
+    const owner = await login('Owner', 'owner')
 
     const response = await app.inject({
       method: 'POST',
       url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
       payload: { name: '' },
     })
 
@@ -201,12 +256,13 @@ describe('buildApp', () => {
 
   it('forbids board mutations for viewer role', async () => {
     app = await buildApp({ origin: '*' })
+    const viewer = await login('Readonly', 'viewer')
 
     const createBoard = await app.inject({
       method: 'POST',
       url: '/boards',
       headers: {
-        'x-syncboard-role': 'viewer',
+        authorization: `Bearer ${viewer.token}`,
       },
       payload: { name: 'Read only board' },
     })
@@ -217,20 +273,77 @@ describe('buildApp', () => {
     })
   })
 
+  it('enforces board membership for snapshot access', async () => {
+    app = await buildApp({ origin: '*' })
+    const owner = await login('Owner', 'owner')
+    const outsider = await login('Outsider', 'editor')
+
+    const createBoard = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
+      payload: { name: 'Private board' },
+    })
+    const board = createBoard.json()
+
+    const outsiderRead = await app.inject({
+      method: 'GET',
+      url: `/boards/${board.id}`,
+      headers: {
+        authorization: `Bearer ${outsider.token}`,
+      },
+    })
+    expect(outsiderRead.statusCode).toBe(403)
+    expect(outsiderRead.json()).toEqual({ message: 'Forbidden: board access denied' })
+  })
+
+  it('allows owner to add member and grants access', async () => {
+    app = await buildApp({ origin: '*' })
+    const owner = await login('Owner', 'owner')
+    const editor = await login('Editor', 'editor')
+
+    const createBoard = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
+      payload: { name: 'Shared board' },
+    })
+    const board = createBoard.json()
+
+    const addMember = await app.inject({
+      method: 'POST',
+      url: `/boards/${board.id}/members`,
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
+      payload: {
+        userId: editor.user.id,
+        role: 'editor',
+      },
+    })
+    expect(addMember.statusCode).toBe(204)
+
+    const editorBoards = await app.inject({
+      method: 'GET',
+      url: '/boards',
+      headers: {
+        authorization: `Bearer ${editor.token}`,
+      },
+    })
+    expect(editorBoards.statusCode).toBe(200)
+    expect(editorBoards.json()).toEqual({
+      boards: [expect.objectContaining({ id: board.id })],
+    })
+  })
+
   it('creates auth session and returns current user via /me', async () => {
     app = await buildApp({ origin: '*' })
 
-    const login = await app.inject({
-      method: 'POST',
-      url: '/auth/login',
-      payload: { name: 'Azazel', role: 'editor' },
-    })
-
-    expect(login.statusCode).toBe(200)
-    const session = login.json()
-    expect(session.user.name).toBe('Azazel')
-    expect(session.user.role).toBe('editor')
-    expect(typeof session.token).toBe('string')
+    const session = await login('Azazel', 'editor')
 
     const me = await app.inject({
       method: 'GET',
@@ -249,45 +362,23 @@ describe('buildApp', () => {
     })
   })
 
-  it('enforces viewer role from bearer session token', async () => {
-    app = await buildApp({ origin: '*' })
-
-    const login = await app.inject({
-      method: 'POST',
-      url: '/auth/login',
-      payload: { name: 'Readonly', role: 'viewer' },
-    })
-    const session = login.json()
-
-    const createBoard = await app.inject({
-      method: 'POST',
-      url: '/boards',
-      headers: {
-        authorization: `Bearer ${session.token}`,
-      },
-      payload: { name: 'Blocked board' },
-    })
-
-    expect(createBoard.statusCode).toBe(403)
-    expect(createBoard.json()).toEqual({
-      message: 'Forbidden: viewer role cannot modify board state',
-    })
-  })
-
   it('broadcasts realtime events for board clients over websocket', async () => {
     app = await buildApp({ origin: '*' })
     await app.listen({ host: '127.0.0.1', port: 0 })
 
+    const owner = await login('Owner', 'owner')
     const createBoard = await app.inject({
       method: 'POST',
       url: '/boards',
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
       payload: { name: 'Realtime Board' },
     })
     const board = createBoard.json()
 
     const address = app.server.address() as AddressInfo
-    const userId = '11111111-1111-4111-8111-111111111111'
-    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws?userId=${userId}`)
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws?token=${owner.token}`)
     await once(socket, 'open')
 
     const presencePromise = waitForRealtimeMessage(
@@ -325,6 +416,9 @@ describe('buildApp', () => {
     const createColumn = await app.inject({
       method: 'POST',
       url: `/boards/${board.id}/columns`,
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+      },
       payload: { title: 'Incoming' },
     })
     expect(createColumn.statusCode).toBe(201)
@@ -366,7 +460,7 @@ describe('buildApp', () => {
 
     expect(activityEvent.event.type).toBe('activity.update')
     expect(activityEvent.event.payload.boardId).toBe(board.id)
-    expect(activityEvent.event.payload.userId).toBe(userId)
+    expect(activityEvent.event.payload.userId).toBe(owner.user.id)
     expect(activityEvent.event.payload.dragging).toBe(true)
 
     socket.close()

@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import type { Board, BoardCard, BoardColumn, BoardSnapshot } from '@syncboard/shared'
+import type { Board, BoardCard, BoardColumn, BoardRole, BoardSnapshot } from '@syncboard/shared'
 
 import type { BoardStore } from '../../domain/board-store.js'
 
@@ -66,17 +66,34 @@ function mapCard(card: {
 export class PrismaBoardStore implements BoardStore {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async listBoards() {
+  async listBoardsForUser(userId: string) {
     const boards = await this.prisma.board.findMany({
+      where: {
+        members: {
+          some: { userId },
+        },
+      },
       orderBy: { createdAt: 'asc' },
     })
 
     return boards.map(mapBoard)
   }
 
-  async createBoard(name: string) {
-    const board = await this.prisma.board.create({
-      data: { name },
+  async createBoard(name: string, ownerUserId: string) {
+    const board = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.board.create({
+        data: { name },
+      })
+
+      await tx.boardMember.create({
+        data: {
+          boardId: created.id,
+          userId: ownerUserId,
+          role: 'owner',
+        },
+      })
+
+      return created
     })
 
     return mapBoard(board)
@@ -127,12 +144,61 @@ export class PrismaBoardStore implements BoardStore {
     return board ? mapBoard(board) : null
   }
 
+  async getColumn(columnId: string) {
+    const column = await this.prisma.boardColumn.findUnique({
+      where: { id: columnId },
+    })
+
+    return column ? mapColumn(column) : null
+  }
+
   async getCard(cardId: string) {
     const card = await this.prisma.boardCard.findUnique({
       where: { id: cardId },
     })
 
     return card ? mapCard(card) : null
+  }
+
+  async getBoardMemberRole(boardId: string, userId: string) {
+    const member = await this.prisma.boardMember.findUnique({
+      where: {
+        boardId_userId: {
+          boardId,
+          userId,
+        },
+      },
+      select: { role: true },
+    })
+
+    return (member?.role as BoardRole | undefined) ?? null
+  }
+
+  async addBoardMember(boardId: string, userId: string, role: BoardRole) {
+    const board = await this.prisma.board.findUnique({
+      where: { id: boardId },
+      select: { id: true },
+    })
+    if (!board) {
+      return false
+    }
+
+    await this.prisma.boardMember.upsert({
+      where: {
+        boardId_userId: {
+          boardId,
+          userId,
+        },
+      },
+      update: { role },
+      create: {
+        boardId,
+        userId,
+        role,
+      },
+    })
+
+    return true
   }
 
   async getBoardSnapshot(boardId: string): Promise<BoardSnapshot | null> {

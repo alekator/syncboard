@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { entityIdSchema } from '@syncboard/shared'
 
 import { RealtimeHub } from '../realtime/realtime-hub.js'
+import type { SessionStore } from '../auth/session-store.js'
+import type { BoardStore } from '../domain/board-store.js'
 
 const CLIENT_EVENT_SCHEMA = z.discriminatedUnion('type', [
   z.object({
@@ -24,7 +26,7 @@ const CLIENT_EVENT_SCHEMA = z.discriminatedUnion('type', [
 ])
 
 const CLIENT_QUERY_SCHEMA = z.object({
-  userId: entityIdSchema.optional(),
+  token: z.string().min(1),
 })
 
 function parseClientMessage(raw: RawData) {
@@ -41,10 +43,23 @@ function parseClientMessage(raw: RawData) {
 export async function registerRealtimeRoutes(
   app: FastifyInstance,
   realtimeHub: RealtimeHub,
+  sessionStore: SessionStore,
+  boardStore: BoardStore,
 ) {
-  app.get('/ws', { websocket: true }, (socket, request) => {
+  app.get('/ws', { websocket: true }, async (socket, request) => {
     const query = CLIENT_QUERY_SCHEMA.safeParse(request.query)
-    const userId = query.success ? (query.data.userId ?? randomUUID()) : randomUUID()
+    if (!query.success) {
+      socket.close(1008, 'Unauthorized')
+      return
+    }
+
+    const sessionUser = await sessionStore.getUserByToken(query.data.token)
+    if (!sessionUser) {
+      socket.close(1008, 'Unauthorized')
+      return
+    }
+
+    const userId = entityIdSchema.safeParse(sessionUser.id).success ? sessionUser.id : randomUUID()
     const client = realtimeHub.registerClient(socket, userId)
 
     socket.on('message', async (raw) => {
@@ -54,6 +69,12 @@ export async function registerRealtimeRoutes(
       }
 
       if (parsed.data.type === 'board.join') {
+        const role = await boardStore.getBoardMemberRole(parsed.data.boardId, userId)
+        if (!role) {
+          socket.close(1008, 'Forbidden')
+          return
+        }
+
         await realtimeHub.joinBoard(client, parsed.data.boardId)
       }
 

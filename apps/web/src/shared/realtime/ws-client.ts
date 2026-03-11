@@ -5,20 +5,21 @@ type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnect
 type RealtimeClientOptions = {
   boardId: string
   userId: string
+  token: string
   onEvent: (event: RealtimeEventEnvelope) => void
   onStateChange?: (state: ConnectionState) => void
   onConnected?: () => void
 }
 
-function resolveRealtimeUrl(userId: string) {
+function resolveRealtimeUrl(token: string) {
   const wsUrl = import.meta.env.VITE_WS_URL as string | undefined
   if (wsUrl) {
-    return `${wsUrl}?userId=${encodeURIComponent(userId)}`
+    return `${wsUrl}?token=${encodeURIComponent(token)}`
   }
 
   const apiUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001'
   const fallbackWsUrl = apiUrl.replace(/^http/, 'ws')
-  return `${fallbackWsUrl}/ws?userId=${encodeURIComponent(userId)}`
+  return `${fallbackWsUrl}/ws?token=${encodeURIComponent(token)}`
 }
 
 export class RealtimeClient {
@@ -38,7 +39,7 @@ export class RealtimeClient {
     this.onEvent = options.onEvent
     this.onStateChange = options.onStateChange
     this.onConnected = options.onConnected
-    this.url = resolveRealtimeUrl(options.userId)
+    this.url = resolveRealtimeUrl(options.token)
   }
 
   connect() {

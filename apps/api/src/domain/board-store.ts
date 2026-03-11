@@ -1,16 +1,20 @@
 import { randomUUID } from 'node:crypto'
+import type { BoardRole } from '@syncboard/shared'
 
 import type { Board, BoardCard, BoardColumn, BoardSnapshot, EntityId } from './types.js'
 
 const POSITION_STEP = 1_000
 
 export interface BoardStore {
-  listBoards(): Promise<Board[]>
-  createBoard(name: string): Promise<Board>
+  listBoardsForUser(userId: EntityId): Promise<Board[]>
+  createBoard(name: string, ownerUserId: EntityId): Promise<Board>
   updateBoard(boardId: EntityId, updates: { name?: string }): Promise<Board | null>
   deleteBoard(boardId: EntityId): Promise<boolean>
+  getColumn(columnId: EntityId): Promise<BoardColumn | null>
   getBoard(boardId: EntityId): Promise<Board | null>
   getCard(cardId: EntityId): Promise<BoardCard | null>
+  getBoardMemberRole(boardId: EntityId, userId: EntityId): Promise<BoardRole | null>
+  addBoardMember(boardId: EntityId, userId: EntityId, role: BoardRole): Promise<boolean>
   getBoardSnapshot(boardId: EntityId): Promise<BoardSnapshot | null>
   createColumn(boardId: EntityId, title: string): Promise<BoardColumn | null>
   updateColumn(
@@ -32,12 +36,15 @@ export class InMemoryBoardStore implements BoardStore {
   private readonly boards = new Map<EntityId, Board>()
   private readonly columns = new Map<EntityId, BoardColumn>()
   private readonly cards = new Map<EntityId, BoardCard>()
+  private readonly boardMembers = new Map<EntityId, Map<EntityId, BoardRole>>()
 
-  async listBoards() {
-    return [...this.boards.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  async listBoardsForUser(userId: EntityId) {
+    return [...this.boards.values()]
+      .filter((board) => this.boardMembers.get(board.id)?.has(userId))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   }
 
-  async createBoard(name: string) {
+  async createBoard(name: string, ownerUserId: EntityId) {
     const now = new Date().toISOString()
     const board: Board = {
       id: randomUUID(),
@@ -47,6 +54,7 @@ export class InMemoryBoardStore implements BoardStore {
     }
 
     this.boards.set(board.id, board)
+    this.boardMembers.set(board.id, new Map([[ownerUserId, 'owner']]))
     return board
   }
 
@@ -71,6 +79,7 @@ export class InMemoryBoardStore implements BoardStore {
     }
 
     this.boards.delete(boardId)
+    this.boardMembers.delete(boardId)
 
     for (const column of this.columns.values()) {
       if (column.boardId === boardId) {
@@ -91,8 +100,31 @@ export class InMemoryBoardStore implements BoardStore {
     return this.boards.get(boardId) ?? null
   }
 
+  async getColumn(columnId: EntityId) {
+    return this.columns.get(columnId) ?? null
+  }
+
   async getCard(cardId: EntityId) {
     return this.cards.get(cardId) ?? null
+  }
+
+  async getBoardMemberRole(boardId: EntityId, userId: EntityId) {
+    return this.boardMembers.get(boardId)?.get(userId) ?? null
+  }
+
+  async addBoardMember(boardId: EntityId, userId: EntityId, role: BoardRole) {
+    if (!this.boards.has(boardId)) {
+      return false
+    }
+
+    let members = this.boardMembers.get(boardId)
+    if (!members) {
+      members = new Map<EntityId, BoardRole>()
+      this.boardMembers.set(boardId, members)
+    }
+
+    members.set(userId, role)
+    return true
   }
 
   async getBoardSnapshot(boardId: EntityId): Promise<BoardSnapshot | null> {

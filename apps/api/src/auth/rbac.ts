@@ -1,26 +1,16 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import { boardRoleSchema, type BoardRole } from '@syncboard/shared'
+import type { AuthUser, BoardRole } from '@syncboard/shared'
 
-const ROLE_HEADER_NAME = 'x-syncboard-role'
-
-export function getRequestRole(request: FastifyRequest): BoardRole {
-  if (request.authUser) {
-    return request.authUser.role
+export function requireAuth(request: FastifyRequest, reply: FastifyReply): AuthUser | null {
+  if (!request.authUser) {
+    reply.status(401).send({ message: 'Unauthorized' })
+    return null
   }
 
-  const raw = request.headers[ROLE_HEADER_NAME]
-  const value = Array.isArray(raw) ? raw[0] : raw
-  const parsed = boardRoleSchema.safeParse(value)
-
-  if (parsed.success) {
-    return parsed.data
-  }
-
-  return 'owner'
+  return request.authUser
 }
 
-export function requireWriteRole(request: FastifyRequest, reply: FastifyReply) {
-  const role = getRequestRole(request)
+export function requireWriteRole(role: BoardRole, reply: FastifyReply) {
   if (role === 'viewer') {
     reply.status(403).send({ message: 'Forbidden: viewer role cannot modify board state' })
     return false

@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { BoardSnapshot, RealtimeEventEnvelope } from '@syncboard/shared'
 
 import { boardQueryKeys } from '@/entities/board/api/query-keys'
+import { useSessionStore } from '@/features/auth/model/session-store'
 import { applyActivityEvent } from '@/features/board/realtime/activity'
 import { applyRealtimeEventToSnapshot } from '@/features/board/realtime/apply-realtime-event'
 import { applyPresenceEvent } from '@/features/board/realtime/presence'
@@ -15,18 +16,22 @@ export function useBoardRealtimeSync(boardId: string | undefined) {
   const [status, setStatus] = useState<RealtimeStatus>('disconnected')
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([])
   const [draggingByUser, setDraggingByUser] = useState<Record<string, boolean>>({})
-  const [currentUserId] = useState(() => crypto.randomUUID())
+  const sessionUser = useSessionStore((state) => state.user)
+  const sessionToken = useSessionStore((state) => state.token)
+  const currentUserId = sessionUser?.id
   const latestSequenceRef = useRef(0)
   const clientRef = useRef<RealtimeClient | null>(null)
 
   useEffect(() => {
-    if (!boardId) {
+    if (!boardId || !currentUserId || !sessionToken) {
+      setStatus('disconnected')
       return
     }
 
     const client = new RealtimeClient({
       boardId,
       userId: currentUserId,
+      token: sessionToken,
       onStateChange: setStatus,
       onConnected: () => {
         void queryClient.invalidateQueries({ queryKey: boardQueryKeys.detail(boardId) })
@@ -69,10 +74,14 @@ export function useBoardRealtimeSync(boardId: string | undefined) {
       setOnlineUserIds([])
       setDraggingByUser({})
     }
-  }, [boardId, currentUserId, queryClient])
-  const visibleOnlineUserIds = onlineUserIds.includes(currentUserId)
-    ? onlineUserIds
-    : [...onlineUserIds, currentUserId]
+  }, [boardId, currentUserId, queryClient, sessionToken])
+
+  const visibleOnlineUserIds =
+    currentUserId && onlineUserIds.includes(currentUserId)
+      ? onlineUserIds
+      : currentUserId
+        ? [...onlineUserIds, currentUserId]
+        : onlineUserIds
 
   const draggingUserIds = Object.keys(draggingByUser).filter((userId) => draggingByUser[userId])
 
@@ -80,7 +89,7 @@ export function useBoardRealtimeSync(boardId: string | undefined) {
     status,
     onlineUserIds: visibleOnlineUserIds,
     draggingUserIds,
-    currentUserId,
+    currentUserId: currentUserId ?? '',
     sendDraggingActivity: (dragging: boolean) => clientRef.current?.sendActivity(dragging),
   }
 }

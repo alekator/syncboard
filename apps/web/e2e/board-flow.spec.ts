@@ -65,7 +65,6 @@ test('login, create board, create card, move card between columns', async ({ pag
     },
     headers: {
       ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
-      'x-syncboard-role': 'owner',
       'content-type': 'application/json',
     },
   })
