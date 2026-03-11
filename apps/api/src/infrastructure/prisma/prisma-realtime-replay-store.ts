@@ -1,7 +1,6 @@
-import { Prisma } from '@prisma/client'
 import { realtimeEventEnvelopeSchema, type RealtimeEventEnvelope } from '@syncboard/shared'
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import type { RealtimeReplayStore } from '../../realtime/replay-store.js'
 
 const MAX_DURABLE_REPLAY_EVENTS_PER_BOARD = 5_000
@@ -11,6 +10,14 @@ type ReplayAppendInput = {
   boardId: string
   entityId?: string
   event: RealtimeEventEnvelope['event']
+}
+
+function hasPrismaErrorCode(error: unknown, code: string) {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  return 'code' in error && (error as { code?: unknown }).code === code
 }
 
 export class PrismaRealtimeReplayStore implements RealtimeReplayStore {
@@ -62,7 +69,7 @@ export class PrismaRealtimeReplayStore implements RealtimeReplayStore {
           event: created.event,
         })
       } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        if (hasPrismaErrorCode(error, 'P2002')) {
           lastError = error
           continue
         }
