@@ -106,6 +106,7 @@ flowchart LR
 - `syncboard_failed_mutations_total` tracks failed mutation count.
 - `syncboard_forbidden_total` tracks forbidden response count.
 - `x-request-id` is attached to HTTP responses for request tracing.
+- Detailed diagnostics and query cheatsheet: `docs/observability.md`
 
 ## SLO Targets
 
@@ -245,6 +246,7 @@ Detailed benchmark guide:
 ## Engineering Docs
 
 - `docs/slo.md`
+- `docs/observability.md`
 - `docs/performance.md`
 - `docs/adr/README.md`
 
